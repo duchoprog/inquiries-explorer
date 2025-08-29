@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Product Search</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      .result-set {
+        border: 1px solid #dee2e6;
+        border-radius: 0.375rem;
+        margin-bottom: 1.5rem;
+      }
+      .result-header {
+        background-color: #f8f9fa;
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid #dee2e6;
+      }
+      .result-list {
+        list-style-type: none;
+        padding: 0;
+      }
+      .result-list li {
+        padding: 0.75rem 1.25rem;
+        border-bottom: 1px solid #dee2e6;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .result-list li:last-child {
+        border-bottom: none;
+      }
+      .disabled-record {
+        text-decoration: line-through;
+        opacity: 0.5;
+      }
+      /* NEW: Hide the global actions container by default */
+      #global-actions {
+        display: none;
+      }
+    </style>
+  </head>
+  <body class="bg-light">
+    <div class="container mt-5 mb-5">
+      <div class="card">
+        <div class="card-header">
+          <h2>Product Database Search</h2>
+        </div>
+        <div class="card-body">
+          <form id="searchForm">
+            <div class="mb-3">
+              <label class="form-label fw-bold"
+                >PRODUCTO (select up to 3)</label
+              >
+              <div class="row">
+                <% for(let i = 1; i <= 3; i++) { %>
+                <div class="col-md-4">
+                  <select
+                    class="form-select mb-2"
+                    name="producto<%= i %>"
+                    id="producto<%= i %>"
+                  >
+                    <option value="">Select a product...</option>
+                    <% productoOptions.forEach(function(option){ %>
+                    <option value="<%= option %>"><%= option %></option>
+                    <% }); %>
+                  </select>
+                </div>
+                <% } %>
+              </div>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label for="descripcion" class="form-label fw-bold"
+                  >DESCRIPCION</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="descripcion"
+                  name="descripcion"
+                  placeholder="Search in descriptions..."
+                />
+              </div>
+              <div class="col-md-6">
+                <label for="material" class="form-label fw-bold"
+                  >MATERIAL</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="material"
+                  name="material"
+                  placeholder="Search in materials..."
+                />
+              </div>
+            </div>
+
+            <div class="row align-items-center">
+              <div class="col-md-6 mb-3">
+                <label class="form-label fw-bold">Search Logic</label>
+                <div class="form-check">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="searchType"
+                    id="searchTypeAND"
+                    value="AND"
+                    checked
+                  />
+                  <label class="form-check-label" for="searchTypeAND">
+                    Match ALL criteria (more specific)
+                  </label>
+                </div>
+                <div class="form-check">
+                  <input
+                    class="form-check-input"
+                    type="radio"
+                    name="searchType"
+                    id="searchTypeOR"
+                    value="OR"
+                  />
+                  <label class="form-check-label" for="searchTypeOR">
+                    Match ANY criterion (broader)
+                  </label>
+                </div>
+              </div>
+              <div class="col-md-6 mb-3 d-flex justify-content-end">
+                <button type="submit" class="btn btn-primary btn-lg">
+                  Search
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <div class="mt-5">
+        <div id="global-actions" class="card mb-3">
+          <div class="card-body d-flex justify-content-end">
+            <button
+              class="btn btn-sm btn-outline-secondary me-2"
+              onclick="printResults()"
+            >
+              Print Visible
+            </button>
+            <button
+              class="btn btn-sm btn-outline-success me-2"
+              onclick="exportResults()"
+            >
+              Export Visible to XLSX
+            </button>
+            <button class="btn btn-sm btn-outline-info" onclick="displayAll()">
+              Display All Records
+            </button>
+          </div>
+        </div>
+        <div id="results-container"></div>
+      </div>
+    </div>
+
+    <script>
+      const searchForm = document.getElementById("searchForm");
+      const resultsContainer = document.getElementById("results-container");
+      const globalActions = document.getElementById("global-actions"); // NEW
+      let currentResultSets = [];
+
+      searchForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+
+        const formData = new FormData(searchForm);
+        const data = Object.fromEntries(formData.entries());
+
+        const response = await fetch("/search", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(data),
+        });
+
+        const newResultSet = await response.json();
+
+        let addToExisting = false;
+        if (currentResultSets.length > 0) {
+          addToExisting = confirm(
+            "Do you want to add these results to the existing list? (Cancel to replace)"
+          );
+        }
+
+        if (addToExisting) {
+          currentResultSets.push(newResultSet);
+        } else {
+          currentResultSets = [newResultSet];
+        }
+
+        renderResults();
+      });
+
+      function renderResults() {
+        resultsContainer.innerHTML = ""; // Clear previous results
+
+        // NEW: Show or hide the global actions container
+        if (
+          currentResultSets.some((set) => set.results && set.results.length > 0)
+        ) {
+          globalActions.style.display = "block";
+        } else {
+          globalActions.style.display = "none";
+        }
+
+        currentResultSets.forEach((set) => {
+          if (!set.results || set.results.length === 0) return;
+
+          const resultSetDiv = document.createElement("div");
+          resultSetDiv.className = "result-set";
+
+          // MODIFIED: Header no longer contains buttons
+          const header = `
+                    <div class="result-header">
+                        <h5 class="mb-0">Search Results</h5>
+                        <small class="text-muted">${set.title}</small>
+                    </div>
+                `;
+
+          const list = document.createElement("ul");
+          list.className = "result-list";
+
+          set.results.forEach((record) => {
+            const li = document.createElement("li");
+            li.dataset.id = record.id;
+
+            // MODIFIED: Updated the layout of the result item
+            li.innerHTML = `
+                        <div>
+                            <a href="${
+                              record.url || "#"
+                            }" target="_blank" class="fw-bold">${
+              record.project || "No Project"
+            }</a>
+                            <div>
+                                <strong>${
+                                  record.producto || "N/A"
+                                }</strong> (ID: ${record.id}) - ${
+              record.company_name || "N/A"
+            }
+                            </div>
+                            <p class="mb-0 text-muted small">${
+                              record.product_description || ""
+                            }</p>
+                        </div>
+                        <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Disable</button>
+                    `;
+            list.appendChild(li);
+          });
+
+          resultSetDiv.innerHTML = header;
+          resultSetDiv.appendChild(list);
+          resultsContainer.appendChild(resultSetDiv);
+        });
+      }
+
+      function disableRecord(button) {
+        button.parentElement.classList.add("disabled-record");
+      }
+
+      // MODIFIED: Global function, works on all result sets
+      function displayAll() {
+        resultsContainer.querySelectorAll(".disabled-record").forEach((el) => {
+          el.classList.remove("disabled-record");
+        });
+      }
+
+      // MODIFIED: Global function for printing
+      function printResults() {
+        const printableContent = document.createElement("div");
+        resultsContainer.querySelectorAll(".result-set").forEach((set) => {
+          const clone = set.cloneNode(true);
+          clone
+            .querySelectorAll("li:not(.disabled-record) button")
+            .forEach((btn) => btn.remove());
+          clone
+            .querySelectorAll(".disabled-record")
+            .forEach((el) => el.remove());
+          printableContent.appendChild(clone);
+        });
+
+        const printWindow = window.open("", "_blank");
+        printWindow.document.write("<html><head><title>Print Results</title>");
+        printWindow.document.write(
+          '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">'
+        );
+        printWindow.document.write(
+          "<style>.result-list li { display: block; }</style>"
+        );
+        printWindow.document.write("</head><body>");
+        printWindow.document.write(printableContent.innerHTML);
+        printWindow.document.write("</body></html>");
+        printWindow.document.close();
+        printWindow.print();
+      }
+
+      // MODIFIED: Global function for exporting
+      async function exportResults() {
+        // Get IDs of VISIBLE records from ALL sets
+        const idsToExport = Array.from(resultsContainer.querySelectorAll("li"))
+          .filter((li) => !li.classList.contains("disabled-record"))
+          .map((li) => li.dataset.id);
+
+        if (idsToExport.length === 0) {
+          alert("No visible records to export.");
+          return;
+        }
+
+        const response = await fetch("/export", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids: idsToExport }),
+        });
+
+        if (response.ok) {
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.style.display = "none";
+          a.href = url;
+          a.download = "products.xlsx";
+          document.body.appendChild(a);
+          a.click();
+          window.URL.revokeObjectURL(url);
+        } else {
+          alert("Failed to export data.");
+        }
+      }
+    </script>
+  </body>
+</html>
