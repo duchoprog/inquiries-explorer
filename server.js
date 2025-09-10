@@ -12,24 +12,38 @@ const PORT = process.env.PORT || 3000;
 // In Render.com, you will set this in the "Environment" tab.
 // For local development, you can create a .env file (and use npm install dotenv)
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL, //postgresql://postgres.hbzskqkthjhmcbdpefvm:5450whitley20814@aws-1-us-east-1.pooler.supabase.com:5432/postgres
+  connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false,
   },
+  // Add these connection pool settings
+  max: 20, // Maximum number of clients in the pool
+  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
+  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+  maxUses: 7500, // Close a connection after it has been used 7500 times
+  keepAlive: true, // Keep connections alive
+  keepAliveInitialDelayMillis: 10000, // Start keep-alive probes after 10 seconds
 });
 
-// Add these debugging logs
-console.log("Database URL is configured:", !!process.env.DATABASE_URL); // Logs true/false without exposing sensitive info
-console.log("Attempting database connection...");
+// Add error handler for the pool
+pool.on("error", (err, client) => {
+  console.error("Unexpected error on idle client", err);
+});
 
-// Test the connection
+// Modify the connection test to be more informative
 pool.connect((err, client, release) => {
   if (err) {
     console.error("Error connecting to the database:", err.stack);
-  } else {
-    console.log("Successfully connected to database");
-    release();
+    return;
   }
+  client.query("SELECT NOW()", (err, result) => {
+    release();
+    if (err) {
+      console.error("Error executing test query:", err.stack);
+      return;
+    }
+    console.log("Successfully connected to database at:", result.rows[0].now);
+  });
 });
 
 // Set up the view engine and middleware
@@ -37,6 +51,30 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.use(express.urlencoded({ extended: true })); // To parse form data
 app.use(express.json()); // To parse JSON for export endpoint
+
+const SQL_TO_HEADER_MAP = {
+  item: "# ITEM",
+  code_number: "CODE NUMBER",
+  company_name: "COMPANY NAME",
+  sales_contact: "SALES CONTACT",
+  product_description: "PRODUCT DESCRIPTION",
+  reference_picture: "REFERENCE PICTURE",
+  product_real_description: "PRODUCT REAL DESCRIPTION",
+  product_real_pictures: "PRODUCT REAL PICTURES",
+  sizes_or_capacity: "SIZES OR CAPACITY",
+  other_certificate: "OTHER CERTIFICATE",
+  logo_details: "LOGO DETAILS",
+  other_logo: "OTHER LOGO",
+  set_up_charge: "SET UP CHARGE",
+  sample_time: "SAMPLE TIME",
+  production_time: "PRODUCTION TIME",
+  price_usd: "PRICE USD",
+  pcs_per_box: "PCS PER BOX",
+  gw_kg: "GW KG",
+  producto: "PRODUCTO",
+  origen: "ORIGEN",
+  cbm_per_box: "CBM PER BOX",
+};
 
 // The long list of options for the PRODUCTO select boxes
 const productoOptions = [
@@ -348,30 +386,39 @@ app.get("/test-query", async (req, res) => {
 });
 // Export route to generate an XLSX file
 app.post("/export", async (req, res) => {
-  const { ids } = req.body; // Expect an array of product IDs
+  const { ids } = req.body;
 
   if (!ids || ids.length === 0) {
     return res.status(400).send("No records to export.");
   }
 
   try {
-    // Query only the selected records by ID to ensure data integrity
     const query = "SELECT * FROM products WHERE id = ANY($1) ORDER BY id;";
     const { rows } = await pool.query(query, [ids]);
 
-    // Convert the data to a worksheet
-    const worksheet = xlsx.utils.json_to_sheet(rows);
+    // Transform the data to use proper headers
+    const transformedRows = rows.map((row) => {
+      const transformedRow = {};
+      for (const [sqlColumn, value] of Object.entries(row)) {
+        if (SQL_TO_HEADER_MAP[sqlColumn]) {
+          transformedRow[SQL_TO_HEADER_MAP[sqlColumn]] = value;
+        } else {
+          transformedRow[sqlColumn] = value; // Keep original header for unmapped columns
+        }
+      }
+      return transformedRow;
+    });
+
+    const worksheet = xlsx.utils.json_to_sheet(transformedRows);
     const workbook = xlsx.utils.book_new();
     xlsx.utils.book_append_sheet(workbook, worksheet, "Products");
 
-    // Set headers to send the file back to the client
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader("Content-Disposition", "attachment; filename=products.xlsx");
 
-    // Send the file
     const buffer = xlsx.write(workbook, { type: "buffer", bookType: "xlsx" });
     res.send(buffer);
   } catch (err) {
