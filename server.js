@@ -18,6 +18,20 @@ const pool = new Pool({
   },
 });
 
+// Add these debugging logs
+console.log("Database URL is configured:", !!process.env.DATABASE_URL); // Logs true/false without exposing sensitive info
+console.log("Attempting database connection...");
+
+// Test the connection
+pool.connect((err, client, release) => {
+  if (err) {
+    console.error("Error connecting to the database:", err.stack);
+  } else {
+    console.log("Successfully connected to database");
+    release();
+  }
+});
+
 // Set up the view engine and middleware
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
@@ -228,25 +242,48 @@ app.post("/search", async (req, res) => {
   const conditions = [];
   let paramIndex = 1;
 
-  // Build query for PRODUCTO
+  // Build query for PRODUCTO with fuzzy matching
   if (productos.length > 0) {
-    conditions.push(`producto ILIKE ANY($${paramIndex++})`);
-    queryParams.push(productos.map((p) => `%${p}%`));
+    const productConditions = productos.map((_, index) => {
+      // Combine exact, similar, and plural/singular matches
+      return `(
+        producto ILIKE $${paramIndex + index} OR 
+        SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${
+          paramIndex + index
+        }))) > 0.3 OR
+        LOWER(unaccent(producto)) % LOWER(unaccent($${paramIndex + index}))
+      )`;
+    });
+
+    conditions.push(`(${productConditions.join(" OR ")})`);
+    // Add parameters without the % wildcards for similarity matching
+    productos.forEach((p) => queryParams.push(p.replace(/%/g, "")));
+    paramIndex += productos.length;
   }
 
-  // Build query for DESCRIPCION
+  // Build query for DESCRIPCION with fuzzy matching
   if (descripcion) {
-    conditions.push(
-      `(product_description ILIKE $${paramIndex++} OR product_real_description ILIKE $${paramIndex++})`
-    );
+    conditions.push(`(
+      product_description ILIKE $${paramIndex} OR 
+      product_real_description ILIKE $${paramIndex} OR
+      SIMILARITY(LOWER(unaccent(product_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
+      SIMILARITY(LOWER(unaccent(product_real_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
+      LOWER(unaccent(product_description)) % LOWER(unaccent($${paramIndex})) OR
+      LOWER(unaccent(product_real_description)) % LOWER(unaccent($${paramIndex}))
+    )`);
     queryParams.push(`%${descripcion}%`);
-    queryParams.push(`%${descripcion}%`);
+    paramIndex++;
   }
 
-  // Build query for MATERIAL
+  // Build query for MATERIAL with fuzzy matching
   if (material) {
-    conditions.push(`material ILIKE $${paramIndex++}`);
+    conditions.push(`(
+      material ILIKE $${paramIndex} OR
+      SIMILARITY(LOWER(unaccent(material)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
+      LOWER(unaccent(material)) % LOWER(unaccent($${paramIndex}))
+    )`);
     queryParams.push(`%${material}%`);
+    paramIndex++;
   }
 
   // If no conditions, return nothing
@@ -260,8 +297,23 @@ app.post("/search", async (req, res) => {
   query += " ORDER BY id;";
 
   try {
+    console.log("\n=== Query Details ===");
+    console.log("Parameters received:", {
+      productos,
+      descripcion,
+      material,
+      searchType,
+    });
+    console.log("Executing query:", query);
+    console.log("Query parameters:", queryParams);
+
     const { rows } = await pool.query(query, queryParams);
 
+    console.log("\n4. Database Response:");
+    console.log(`- Number of rows returned: ${rows.length}`);
+    if (rows.length > 0) {
+      console.log("- First row sample:", rows[0]);
+    }
     // Create a summary title for the results
     const titleParts = [];
     if (productos.length > 0)
@@ -270,7 +322,12 @@ app.post("/search", async (req, res) => {
     if (material) titleParts.push(`MATERIAL: ${material}`);
     const title = titleParts.join(` ${searchType} `);
 
-    res.json({ results: rows, title: title });
+    // Add a noResults flag to the response
+    res.json({
+      results: rows,
+      title: title,
+      noResults: rows.length === 0,
+    });
   } catch (err) {
     console.error("Database query error", err.stack);
     res
@@ -278,7 +335,17 @@ app.post("/search", async (req, res) => {
       .json({ error: "An error occurred while searching the database." });
   }
 });
-
+app.get("/test-query", async (req, res) => {
+  try {
+    // Simple query that should always work
+    const result = await pool.query("SELECT COUNT(*) as count FROM products");
+    console.log("Test query result:", result.rows[0]);
+    res.json({ success: true, count: result.rows[0].count });
+  } catch (err) {
+    console.error("Test query failed:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 // Export route to generate an XLSX file
 app.post("/export", async (req, res) => {
   const { ids } = req.body; // Expect an array of product IDs

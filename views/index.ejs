@@ -24,18 +24,24 @@
         padding: 0;
       }
       .result-list li {
-        padding: 0.75rem 1.25rem;
+        padding: 1rem;
         border-bottom: 1px solid #dee2e6;
-        display: flex;
+        display: flex !important; /* Override any other display values */
         justify-content: space-between;
-        align-items: center;
+        align-items: start;
+        gap: 15px;
       }
       .result-list li:last-child {
         border-bottom: none;
       }
       .disabled-record {
-        text-decoration: line-through;
+        text-decoration: none !important; /* Remove the strikethrough */
         opacity: 0.5;
+        background-color: #f8f9fa;
+      }
+      li {
+        margin-top: 0, 5rem;
+        border: 1px solid #99b;
       }
       #global-actions {
         display: none;
@@ -46,7 +52,7 @@
     <div class="container mt-5 mb-5">
       <div class="card">
         <div class="card-header">
-          <h2>Búsqueda en Base de Datos de Productos</h2>
+          <h2>Búsqueda en Base de Datos de Productos!</h2>
         </div>
         <div class="card-body">
           <form id="searchForm">
@@ -170,6 +176,7 @@
 
       searchForm.addEventListener("submit", async (e) => {
         e.preventDefault();
+        console.log("Submitting search form...");
         const formData = new FormData(searchForm);
         const data = Object.fromEntries(formData.entries());
         const response = await fetch("/search", {
@@ -201,6 +208,25 @@
         } else {
           globalActions.style.display = "none";
         }
+
+        if (currentResultSets.length === 0) return;
+
+        // Check if all result sets are empty
+        const allEmpty = currentResultSets.every(
+          (set) => !set.results || set.results.length === 0
+        );
+
+        if (allEmpty) {
+          const noResultsDiv = document.createElement("div");
+          noResultsDiv.className = "alert alert-info text-center";
+          noResultsDiv.innerHTML = `
+            <h4 class="alert-heading">No se encontraron resultados</h4>
+            <p class="mb-0">Intente con diferentes criterios de búsqueda.</p>
+        `;
+          resultsContainer.appendChild(noResultsDiv);
+          return;
+        }
+
         currentResultSets.forEach((set) => {
           if (!set.results || set.results.length === 0) return;
           const resultSetDiv = document.createElement("div");
@@ -216,26 +242,36 @@
           set.results.forEach((record) => {
             const li = document.createElement("li");
             li.dataset.id = record.id;
+            li.style.display = "flex";
+            li.style.alignItems = "start";
+            li.style.gap = "15px";
             li.innerHTML = `
-                        <div>
-                            <a href="${
-                              record.url || "#"
-                            }" target="_blank" class="fw-bold">${
+        <div style="flex: 60%">
+            <a href="${record.url || "#"}" target="_blank" class="fw-bold">${
               record.project || "Sin Proyecto"
             }</a>
-                            <div>
-                                <strong>${
-                                  record.producto || "N/A"
-                                }</strong> (ID: ${record.id}) - ${
-              record.company_name || "N/A"
-            }
-                            </div>
-                            <p class="mb-0 text-muted small">${
-                              record.product_description || ""
-                            }</p>
-                        </div>
-                        <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
-                    `;
+            <div class="mt-2">
+                <div>Company Name: ${record.company_name || "N/A"}</div>
+                <div>Description: ${record.product_description || "N/A"}</div>
+                <div class="d-flex gap-3">
+                    <span>Quantity: ${record.quantity || "N/A"}</span>
+                    <span>Price: $${record.price_usd || "N/A"}</span>
+                </div>
+            </div>
+        </div>
+        <div style="flex: 30%" class="text-center">
+            <img src="${
+              record.product_real_pictures || record.reference_picture || "#"
+            }" 
+                 alt="Product Image" 
+                 class="img-fluid"
+                 style="max-height: 150px"
+                 onerror="this.style.display='none'">
+        </div>
+        <div style="flex: 10%" class="text-end">
+            <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
+        </div>
+    `;
             list.appendChild(li);
           });
           resultSetDiv.innerHTML = header;
