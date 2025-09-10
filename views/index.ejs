@@ -79,7 +79,7 @@
             </div>
 
             <div class="row mb-3">
-              <div class="col-md-6">
+              <div class="col-md-4">
                 <label for="descripcion" class="form-label fw-bold"
                   >DESCRIPCIÓN</label
                 >
@@ -91,7 +91,19 @@
                   placeholder="Buscar en descripciones..."
                 />
               </div>
-              <div class="col-md-6">
+              <div class="col-md-4">
+                <label for="descripcion2" class="form-label fw-bold"
+                  >DESCRIPCIÓN REAL</label
+                >
+                <input
+                  type="text"
+                  class="form-control"
+                  id="descripcion2"
+                  name="descripcion2"
+                  placeholder="Buscar en descripciones..."
+                />
+              </div>
+              <div class="col-md-4">
                 <label for="material" class="form-label fw-bold"
                   >MATERIAL</label
                 >
@@ -220,9 +232,9 @@
           const noResultsDiv = document.createElement("div");
           noResultsDiv.className = "alert alert-info text-center";
           noResultsDiv.innerHTML = `
-            <h4 class="alert-heading">No se encontraron resultados</h4>
-            <p class="mb-0">Intente con diferentes criterios de búsqueda.</p>
-        `;
+      <h4 class="alert-heading">No se encontraron resultados</h4>
+      <p class="mb-0">Intente con diferentes criterios de búsqueda.</p>
+    `;
           resultsContainer.appendChild(noResultsDiv);
           return;
         }
@@ -232,11 +244,11 @@
           const resultSetDiv = document.createElement("div");
           resultSetDiv.className = "result-set";
           const header = `
-                    <div class="result-header">
-                        <h5 class="mb-0">Resultados de la Búsqueda</h5>
-                        <small class="text-muted">${set.title}</small>
-                    </div>
-                `;
+      <div class="result-header">
+        <h5 class="mb-0">Resultados de la Búsqueda</h5>
+        <small class="text-muted">${set.title}</small>
+      </div>
+    `;
           const list = document.createElement("ul");
           list.className = "result-list";
           set.results.forEach((record) => {
@@ -247,34 +259,34 @@
             li.style.gap = "15px";
             li.innerHTML = `
         <div style="flex: 60%">
-            <a href="${record.url || "#"}" target="_blank" class="fw-bold">${
+          <a href="${record.url || "#"}" target="_blank" class="fw-bold">${
               record.project || "Sin Proyecto"
             }</a>
-            <div class="mt-2">
-                <div>Company Name: ${record.company_name || "N/A"}</div>
-                <div>Description: ${record.product_description || "N/A"}</div>
-                <div>Real description: ${
-                  record.product_real_description || "N/A"
-                }</div>
-                <div class="d-flex gap-3">
-                    <span>Quantity: ${record.quantity || "N/A"}</span>
-                    <span>Price: $${record.price_usd || "N/A"}</span>
-                </div>
+          <div class="mt-2">
+            <div>Company Name: ${record.company_name || "N/A"}</div>
+            <div>Description: ${record.product_description || "N/A"}</div>
+            <div>Real description: ${
+              record.product_real_description || "N/A"
+            }</div>
+            <div class="d-flex gap-3">
+              <span>Quantity: ${record.quantity || "N/A"}</span>
+              <span>Price: $${record.price_usd || "N/A"}</span>
             </div>
+          </div>
         </div>
         <div style="flex: 30%" class="text-center">
-            <img src="${
-              record.product_real_pictures || record.reference_picture || "#"
-            }" 
-                 alt="Product Image" 
-                 class="img-fluid"
-                 style="max-height: 150px"
-                 onerror="this.style.display='none'">
+          <img src="${
+            record.product_real_pictures || record.reference_picture || "#"
+          }" 
+               alt="Product Image" 
+               class="img-fluid"
+               style="max-height: 150px"
+               onerror="this.style.display='none'">
         </div>
         <div style="flex: 10%" class="text-end">
-            <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
+          <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
         </div>
-    `;
+      `;
             list.appendChild(li);
           });
           resultSetDiv.innerHTML = header;

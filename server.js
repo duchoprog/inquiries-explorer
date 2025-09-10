@@ -4,6 +4,8 @@ const express = require("express");
 const path = require("path");
 const { Pool } = require("pg");
 const xlsx = require("xlsx");
+const axios = require("axios");
+const sharp = require("sharp");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -268,8 +270,15 @@ app.get("/", (req, res) => {
 
 // Search route to handle the form submission
 app.post("/search", async (req, res) => {
-  const { producto1, producto2, producto3, descripcion, material, searchType } =
-    req.body;
+  const {
+    producto1,
+    producto2,
+    producto3,
+    descripcion,
+    descripcion2,
+    material,
+    searchType,
+  } = req.body;
 
   const productos = [producto1, producto2, producto3].filter(
     (p) => p && p !== ""
@@ -280,10 +289,9 @@ app.post("/search", async (req, res) => {
   const conditions = [];
   let paramIndex = 1;
 
-  // Build query for PRODUCTO with fuzzy matching
+  // Build query for PRODUCTO (existing code remains the same)
   if (productos.length > 0) {
     const productConditions = productos.map((_, index) => {
-      // Combine exact, similar, and plural/singular matches
       return `(
         producto ILIKE $${paramIndex + index} OR 
         SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${
@@ -294,12 +302,11 @@ app.post("/search", async (req, res) => {
     });
 
     conditions.push(`(${productConditions.join(" OR ")})`);
-    // Add parameters without the % wildcards for similarity matching
     productos.forEach((p) => queryParams.push(p.replace(/%/g, "")));
     paramIndex += productos.length;
   }
 
-  // Build query for DESCRIPCION with fuzzy matching
+  // Build query for first DESCRIPCION
   if (descripcion) {
     conditions.push(`(
       product_description ILIKE $${paramIndex} OR 
@@ -313,7 +320,21 @@ app.post("/search", async (req, res) => {
     paramIndex++;
   }
 
-  // Build query for MATERIAL with fuzzy matching
+  // Build query for second DESCRIPCION
+  if (descripcion2) {
+    conditions.push(`(
+      product_description ILIKE $${paramIndex} OR 
+      product_real_description ILIKE $${paramIndex} OR
+      SIMILARITY(LOWER(unaccent(product_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
+      SIMILARITY(LOWER(unaccent(product_real_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
+      LOWER(unaccent(product_description)) % LOWER(unaccent($${paramIndex})) OR
+      LOWER(unaccent(product_real_description)) % LOWER(unaccent($${paramIndex}))
+    )`);
+    queryParams.push(`%${descripcion2}%`);
+    paramIndex++;
+  }
+
+  // Build query for MATERIAL (existing code remains the same)
   if (material) {
     conditions.push(`(
       material ILIKE $${paramIndex} OR
@@ -339,6 +360,7 @@ app.post("/search", async (req, res) => {
     console.log("Parameters received:", {
       productos,
       descripcion,
+      descripcion2,
       material,
       searchType,
     });
@@ -347,20 +369,15 @@ app.post("/search", async (req, res) => {
 
     const { rows } = await pool.query(query, queryParams);
 
-    console.log("\n4. Database Response:");
-    console.log(`- Number of rows returned: ${rows.length}`);
-    if (rows.length > 0) {
-      console.log("- First row sample:", rows[0]);
-    }
     // Create a summary title for the results
     const titleParts = [];
     if (productos.length > 0)
       titleParts.push(`PRODUCTO: ${productos.join(" or ")}`);
     if (descripcion) titleParts.push(`DESCRIPCION: ${descripcion}`);
+    if (descripcion2) titleParts.push(`DESCRIPCION 2: ${descripcion2}`);
     if (material) titleParts.push(`MATERIAL: ${material}`);
     const title = titleParts.join(` ${searchType} `);
 
-    // Add a noResults flag to the response
     res.json({
       results: rows,
       title: title,
@@ -396,23 +413,81 @@ app.post("/export", async (req, res) => {
     const query = "SELECT * FROM products WHERE id = ANY($1) ORDER BY id;";
     const { rows } = await pool.query(query, [ids]);
 
-    // Transform the data to use proper headers
-    const transformedRows = rows.map((row) => {
+    // Transform the data and handle images
+    const transformedRows = [];
+
+    for (const row of rows) {
       const transformedRow = {};
+
+      // Transform column names using the mapping
       for (const [sqlColumn, value] of Object.entries(row)) {
         if (SQL_TO_HEADER_MAP[sqlColumn]) {
           transformedRow[SQL_TO_HEADER_MAP[sqlColumn]] = value;
         } else {
-          transformedRow[sqlColumn] = value; // Keep original header for unmapped columns
+          transformedRow[sqlColumn] = value;
         }
       }
-      return transformedRow;
-    });
 
-    const worksheet = xlsx.utils.json_to_sheet(transformedRows);
+      // Handle images
+      try {
+        // Try product_real_pictures first, then fallback to reference_picture
+        const imageUrl = row.product_real_pictures || row.reference_picture;
+        if (imageUrl) {
+          const response = await axios.get(imageUrl, {
+            responseType: "arraybuffer",
+          });
+
+          // Resize image to a reasonable size for Excel
+          const resizedImage = await sharp(response.data)
+            .resize(200, 200, { fit: "inside" })
+            .toBuffer();
+
+          // Convert to base64
+          const base64Image = resizedImage.toString("base64");
+
+          // Add image data to the row
+          transformedRow["IMAGE"] = {
+            v: "", // The cell value will be empty
+            l: {
+              // This defines the image to be placed in the cell
+              Target: `data:image/jpeg;base64,${base64Image}`,
+              Rel: { Type: "image" },
+            },
+          };
+        }
+      } catch (imageError) {
+        console.error(
+          `Error processing image for record ${row.id}:`,
+          imageError
+        );
+        transformedRow["IMAGE"] = "Image not available";
+      }
+
+      transformedRows.push(transformedRow);
+    }
+
+    // Create workbook and worksheet
     const workbook = xlsx.utils.book_new();
+    const worksheet = xlsx.utils.json_to_sheet(transformedRows);
+
+    // Set column widths
+    const colWidths = [];
+    for (const key in SQL_TO_HEADER_MAP) {
+      colWidths.push({ wch: 20 }); // Set width to 20 characters
+    }
+    colWidths.push({ wch: 30 }); // Width for image column
+    worksheet["!cols"] = colWidths;
+
+    // Set row heights (to accommodate images)
+    const rowHeights = [];
+    for (let i = 0; i <= transformedRows.length; i++) {
+      rowHeights.push({ hpt: 150 }); // Set height to 150 points
+    }
+    worksheet["!rows"] = rowHeights;
+
     xlsx.utils.book_append_sheet(workbook, worksheet, "Products");
 
+    // Send the file
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
