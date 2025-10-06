@@ -46,23 +46,28 @@
       #global-actions {
         display: none;
       }
+      .form-control,
+      .form-select,
+      .form-label {
+        font-size: 0.8rem;
+      }
     </style>
   </head>
   <body class="bg-light">
     <div class="container mt-5 mb-5">
       <div class="card">
         <div class="card-header">
-          <h2>Búsqueda en Base de Datos de Productos!</h2>
+          <h2>Búsqueda en Base de Datos de Productos</h2>
         </div>
         <div class="card-body">
           <form id="searchForm">
             <div class="mb-3">
               <label class="form-label fw-bold"
-                >PRODUCTO (seleccione hasta 3)</label
+                >PRODUCTO (seleccione hasta 5)</label
               >
               <div class="row">
-                <% for(let i = 1; i <= 3; i++) { %>
-                <div class="col-md-4">
+                <% for(let i = 1; i <= 5; i++) { %>
+                <div class="col">
                   <select
                     class="form-select mb-2"
                     name="producto<%= i %>"
@@ -78,42 +83,37 @@
               </div>
             </div>
 
-            <div class="row mb-3">
-              <div class="col-md-4">
-                <label for="descripcion" class="form-label fw-bold"
-                  >DESCRIPCIÓN</label
-                >
-                <input
-                  type="text"
-                  class="form-control"
-                  id="descripcion"
-                  name="descripcion"
-                  placeholder="Buscar en descripciones..."
-                />
+            <div class="mb-3">
+              <label class="form-label fw-bold">DESCRIPCIÓN</label>
+              <div class="row">
+                <% for(let i = 1; i <= 5; i++) { %>
+                <div class="col">
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="descripcion<%= i %>"
+                    name="descripcion<%= i %>"
+                    placeholder="Descripción <%= i %>"
+                  />
+                </div>
+                <% } %>
               </div>
-              <div class="col-md-4">
-                <label for="descripcion2" class="form-label fw-bold"
-                  >DESCRIPCIÓN REAL</label
-                >
-                <input
-                  type="text"
-                  class="form-control"
-                  id="descripcion2"
-                  name="descripcion2"
-                  placeholder="Buscar en descripciones..."
-                />
-              </div>
-              <div class="col-md-4">
-                <label for="material" class="form-label fw-bold"
-                  >MATERIAL</label
-                >
-                <input
-                  type="text"
-                  class="form-control"
-                  id="material"
-                  name="material"
-                  placeholder="Buscar en materiales..."
-                />
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label fw-bold">MATERIAL</label>
+              <div class="row">
+                <% for(let i = 1; i <= 5; i++) { %>
+                <div class="col">
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="material<%= i %>"
+                    name="material<%= i %>"
+                    placeholder="Material <%= i %>"
+                  />
+                </div>
+                <% } %>
               </div>
             </div>
 
@@ -125,12 +125,12 @@
                     class="form-check-input"
                     type="radio"
                     name="searchType"
-                    id="searchTypeAND"
-                    value="AND"
+                    id="searchTypeOR"
+                    value="OR"
                     checked
                   />
-                  <label class="form-check-label" for="searchTypeAND">
-                    Coincidir con TODOS los criterios (más específico)
+                  <label class="form-check-label" for="searchTypeOR">
+                    Coincidir con CUALQUIER criterio (más amplio)
                   </label>
                 </div>
                 <div class="form-check">
@@ -138,11 +138,11 @@
                     class="form-check-input"
                     type="radio"
                     name="searchType"
-                    id="searchTypeOR"
-                    value="OR"
+                    id="searchTypeAND"
+                    value="AND"
                   />
-                  <label class="form-check-label" for="searchTypeOR">
-                    Coincidir con CUALQUIER criterio (más amplio)
+                  <label class="form-check-label" for="searchTypeAND">
+                    Coincidir con TODOS los criterios (más específico)
                   </label>
                 </div>
               </div>
@@ -263,7 +263,8 @@
               record.project || "Sin Proyecto"
             }</a>
           <div class="mt-2">
-            <div>Company Name: ${record.company_name || "N/A"}</div>
+            <div>Company Name: ${record.company_name || "N/A"} | Contact: ${record.sales_contact || "N/A"}</div>
+            <div>Wechat: ${record.wechat || "N/A"} | Email: ${record.email || "N/A"}</div>
             <div>Description: ${record.product_description || "N/A"}</div>
             <div>Real description: ${
               record.product_real_description || "N/A"

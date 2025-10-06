@@ -274,22 +274,49 @@ app.post("/search", async (req, res) => {
     producto1,
     producto2,
     producto3,
-    descripcion,
+    producto4,
+    producto5,
+    descripcion1,
     descripcion2,
-    material,
+    descripcion3,
+    descripcion4,
+    descripcion5,
+    material1,
+    material2,
+    material3,
+    material4,
+    material5,
     searchType,
   } = req.body;
 
-  const productos = [producto1, producto2, producto3].filter(
-    (p) => p && p !== ""
-  );
+  const productos = [
+    producto1,
+    producto2,
+    producto3,
+    producto4,
+    producto5,
+  ].filter((p) => p && p !== "");
+  const descripciones = [
+    descripcion1,
+    descripcion2,
+    descripcion3,
+    descripcion4,
+    descripcion5,
+  ].filter((d) => d && d !== "");
+  const materiales = [
+    material1,
+    material2,
+    material3,
+    material4,
+    material5,
+  ].filter((m) => m && m !== "");
 
   let query = "SELECT * FROM products WHERE ";
   const queryParams = [];
   const conditions = [];
   let paramIndex = 1;
 
-  // Build query for PRODUCTO (existing code remains the same)
+  // Build query for PRODUCTO
   if (productos.length > 0) {
     const productConditions = productos.map((_, index) => {
       return `(
@@ -306,43 +333,45 @@ app.post("/search", async (req, res) => {
     paramIndex += productos.length;
   }
 
-  // Build query for first DESCRIPCION
-  if (descripcion) {
-    conditions.push(`(
-      product_description ILIKE $${paramIndex} OR 
-      product_real_description ILIKE $${paramIndex} OR
-      SIMILARITY(LOWER(unaccent(product_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
-      SIMILARITY(LOWER(unaccent(product_real_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
-      LOWER(unaccent(product_description)) % LOWER(unaccent($${paramIndex})) OR
-      LOWER(unaccent(product_real_description)) % LOWER(unaccent($${paramIndex}))
-    )`);
-    queryParams.push(`%${descripcion}%`);
-    paramIndex++;
+  // Build query for DESCRIPCION fields
+  if (descripciones.length > 0) {
+    const descripcionConditions = descripciones.map((_, index) => {
+      return `(
+      product_description ILIKE $${paramIndex + index} OR 
+      product_real_description ILIKE $${paramIndex + index} OR
+      SIMILARITY(LOWER(unaccent(product_description)), LOWER(unaccent($${
+        paramIndex + index
+      }))) > 0.3 OR
+      SIMILARITY(LOWER(unaccent(product_real_description)), LOWER(unaccent($${
+        paramIndex + index
+      }))) > 0.3 OR
+      LOWER(unaccent(product_description)) % LOWER(unaccent($${
+        paramIndex + index
+      })) OR
+      LOWER(unaccent(product_real_description)) % LOWER(unaccent($${
+        paramIndex + index
+      }))
+    )`;
+    });
+    conditions.push(`(${descripcionConditions.join(" OR ")})`);
+    descripciones.forEach((d) => queryParams.push(`%${d}%`));
+    paramIndex += descripciones.length;
   }
 
-  // Build query for second DESCRIPCION
-  if (descripcion2) {
-    conditions.push(`(
-      product_description ILIKE $${paramIndex} OR 
-      product_real_description ILIKE $${paramIndex} OR
-      SIMILARITY(LOWER(unaccent(product_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
-      SIMILARITY(LOWER(unaccent(product_real_description)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
-      LOWER(unaccent(product_description)) % LOWER(unaccent($${paramIndex})) OR
-      LOWER(unaccent(product_real_description)) % LOWER(unaccent($${paramIndex}))
-    )`);
-    queryParams.push(`%${descripcion2}%`);
-    paramIndex++;
-  }
-
-  // Build query for MATERIAL (existing code remains the same)
-  if (material) {
-    conditions.push(`(
-      material ILIKE $${paramIndex} OR
-      SIMILARITY(LOWER(unaccent(material)), LOWER(unaccent($${paramIndex}))) > 0.3 OR
-      LOWER(unaccent(material)) % LOWER(unaccent($${paramIndex}))
-    )`);
-    queryParams.push(`%${material}%`);
-    paramIndex++;
+  // Build query for MATERIAL fields
+  if (materiales.length > 0) {
+    const materialConditions = materiales.map((_, index) => {
+      return `(
+      material ILIKE $${paramIndex + index} OR
+      SIMILARITY(LOWER(unaccent(material)), LOWER(unaccent($${
+        paramIndex + index
+      }))) > 0.3 OR
+      LOWER(unaccent(material)) % LOWER(unaccent($${paramIndex + index}))
+    )`;
+    });
+    conditions.push(`(${materialConditions.join(" OR ")})`);
+    materiales.forEach((m) => queryParams.push(`%${m}%`));
+    paramIndex += materiales.length;
   }
 
   // If no conditions, return nothing
@@ -359,9 +388,8 @@ app.post("/search", async (req, res) => {
     console.log("\n=== Query Details ===");
     console.log("Parameters received:", {
       productos,
-      descripcion,
-      descripcion2,
-      material,
+      descripciones,
+      materiales,
       searchType,
     });
     console.log("Executing query:", query);
@@ -373,9 +401,10 @@ app.post("/search", async (req, res) => {
     const titleParts = [];
     if (productos.length > 0)
       titleParts.push(`PRODUCTO: ${productos.join(" or ")}`);
-    if (descripcion) titleParts.push(`DESCRIPCION: ${descripcion}`);
-    if (descripcion2) titleParts.push(`DESCRIPCION 2: ${descripcion2}`);
-    if (material) titleParts.push(`MATERIAL: ${material}`);
+    if (descripciones.length > 0)
+      titleParts.push(`DESCRIPCION: ${descripciones.join(" or ")}`);
+    if (materiales.length > 0)
+      titleParts.push(`MATERIAL: ${materiales.join(" or ")}`);
     const title = titleParts.join(` ${searchType} `);
 
     res.json({
