@@ -146,7 +146,10 @@
                   </label>
                 </div>
               </div>
-              <div class="col-md-6 mb-3 d-flex justify-content-end">
+              <div class="col-md-6 mb-3 d-flex justify-content-end gap-2">
+                <button type="button" class="btn btn-secondary btn-lg" onclick="resetForm()">
+                  Reset
+                </button>
                 <button type="submit" class="btn btn-primary btn-lg">
                   Buscar
                 </button>
@@ -185,6 +188,35 @@
       const resultsContainer = document.getElementById("results-container");
       const globalActions = document.getElementById("global-actions");
       let currentResultSets = [];
+
+      function resetForm() {
+        // Reset all form fields
+        searchForm.reset();
+        
+        // Clear results
+        currentResultSets = [];
+        resultsContainer.innerHTML = "";
+        globalActions.style.display = "none";
+      }
+
+      function makeClickableIfValid(value) {
+        if (!value || value === "N/A") return value;
+        
+        // Check if it's an email address
+        if (value.includes('@')) {
+          return `<a href="mailto:${value}" class="text-decoration-none">${value}</a>`;
+        }
+        
+        // Check if it's a website URL (has a top-level domain)
+        const urlPattern = /^(https?:\/\/)?([\da-z\.-]+\.)+([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
+        if (urlPattern.test(value)) {
+          // Add http:// if no protocol is specified
+          const href = value.startsWith('http') ? value : `http://${value}`;
+          return `<a href="${href}" target="_blank" class="text-decoration-none">${value}</a>`;
+        }
+        
+        return value;
+      }
 
       searchForm.addEventListener("submit", async (e) => {
         e.preventDefault();
@@ -263,15 +295,15 @@
               record.project || "Sin Proyecto"
             }</a>
           <div class="mt-2">
-            <div>Company Name: ${record.company_name || "N/A"} | Contact: ${record.sales_contact || "N/A"}</div>
-            <div>Wechat: ${record.wechat || "N/A"} | Email: ${record.email || "N/A"}</div>
-            <div>Description: ${record.product_description || "N/A"}</div>
-            <div>Real description: ${
+            <div><u>Company Name:</u> ${record.company_name || "N/A"} <span class="text-muted">|</span> <u>Contact:</u> ${makeClickableIfValid(record.sales_contact)}</div>
+            <div><u>Wechat:</u> ${record.wechat || "N/A"} <span class="text-muted">|</span> <u>Email:</u> ${makeClickableIfValid(record.email)}</div>
+            <div><u>Description:</u> ${record.product_description || "N/A"}</div>
+            <div><u>Real description:</u> ${
               record.product_real_description || "N/A"
             }</div>
             <div class="d-flex gap-3">
-              <span>Quantity: ${record.quantity || "N/A"}</span>
-              <span>Price: $${record.price_usd || "N/A"}</span>
+              <span><u>Quantity:</u> ${record.quantity || "N/A"}</span>
+              <span><u>Price:</u> $${record.price_usd || "N/A"}</span>
             </div>
           </div>
         </div>
