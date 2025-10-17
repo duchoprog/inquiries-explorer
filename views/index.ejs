@@ -117,6 +117,45 @@
               </div>
             </div>
 
+            <div class="mb-3">
+              <div class="row">
+                <div class="col">
+                  <label class="form-label fw-bold">ORIGEN</label>
+                </div>
+                <div class="col">
+                </div>
+                <div class="col">
+                </div>
+                <div class="col">
+                </div>
+                <div class="col">
+                  <label class="form-label fw-bold text-danger">ORIGEN NO ES</label>
+                </div>
+              </div>
+              <div class="row">
+                <% for(let i = 1; i <= 4; i++) { %>
+                <div class="col">
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="origen<%= i %>"
+                    name="origen<%= i %>"
+                    placeholder="Origen <%= i %>"
+                  />
+                </div>
+                <% } %>
+                <div class="col">
+                  <input
+                    type="text"
+                    class="form-control"
+                    id="origen5"
+                    name="origen5"
+                    placeholder="Origen a excluir"
+                  />
+                </div>
+              </div>
+            </div>
+
             <div class="row align-items-center">
               <div class="col-md-6 mb-3">
                 <label class="form-label fw-bold">Lógica de Búsqueda</label>
@@ -146,7 +185,10 @@
                   </label>
                 </div>
               </div>
-              <div class="col-md-6 mb-3 d-flex justify-content-end">
+              <div class="col-md-6 mb-3 d-flex justify-content-end gap-2">
+                <button type="reset" class="btn btn-secondary btn-lg">
+                  Limpiar
+                </button>
                 <button type="submit" class="btn btn-primary btn-lg">
                   Buscar
                 </button>

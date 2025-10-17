@@ -4,6 +4,7 @@ const express = require("express");
 const path = require("path");
 const { Pool } = require("pg");
 const xlsx = require("xlsx");
+const ExcelJS = require("exceljs");
 const axios = require("axios");
 const sharp = require("sharp");
 
@@ -286,6 +287,11 @@ app.post("/search", async (req, res) => {
     material3,
     material4,
     material5,
+    origen1,
+    origen2,
+    origen3,
+    origen4,
+    origen5,
     searchType,
   } = req.body;
 
@@ -310,10 +316,20 @@ app.post("/search", async (req, res) => {
     material4,
     material5,
   ].filter((m) => m && m !== "");
+  
+  const origenes = [
+    origen1,
+    origen2,
+    origen3,
+    origen4,
+  ].filter((o) => o && o !== "");
+  
+  const origenExclude = origen5 && origen5 !== "" ? origen5 : null;
 
-  let query = "SELECT * FROM products WHERE ";
-  const queryParams = [];
-  const conditions = [];
+  // Step 1: Build main search query (PRODUCTO, DESCRIPCION, MATERIAL)
+  let mainQuery = "SELECT * FROM products";
+  const mainQueryParams = [];
+  const mainConditions = [];
   let paramIndex = 1;
 
   // Build query for PRODUCTO
@@ -328,8 +344,8 @@ app.post("/search", async (req, res) => {
       )`;
     });
 
-    conditions.push(`(${productConditions.join(" OR ")})`);
-    productos.forEach((p) => queryParams.push(p.replace(/%/g, "")));
+    mainConditions.push(`(${productConditions.join(" OR ")})`);
+    productos.forEach((p) => mainQueryParams.push(p.replace(/%/g, "")));
     paramIndex += productos.length;
   }
 
@@ -353,8 +369,8 @@ app.post("/search", async (req, res) => {
       }))
     )`;
     });
-    conditions.push(`(${descripcionConditions.join(" OR ")})`);
-    descripciones.forEach((d) => queryParams.push(`%${d}%`));
+    mainConditions.push(`(${descripcionConditions.join(" OR ")})`);
+    descripciones.forEach((d) => mainQueryParams.push(`%${d}%`));
     paramIndex += descripciones.length;
   }
 
@@ -369,20 +385,66 @@ app.post("/search", async (req, res) => {
       LOWER(unaccent(material)) % LOWER(unaccent($${paramIndex + index}))
     )`;
     });
-    conditions.push(`(${materialConditions.join(" OR ")})`);
-    materiales.forEach((m) => queryParams.push(`%${m}%`));
+    mainConditions.push(`(${materialConditions.join(" OR ")})`);
+    materiales.forEach((m) => mainQueryParams.push(`%${m}%`));
     paramIndex += materiales.length;
   }
 
-  // If no conditions, return nothing
-  if (conditions.length === 0) {
+  // Add WHERE clause if there are main conditions
+  if (mainConditions.length > 0) {
+    const searchOperator = searchType === "AND" ? " AND " : " OR ";
+    mainQuery += " WHERE " + mainConditions.join(searchOperator);
+  }
+
+  // Step 2: Apply ORIGEN filtering as secondary filter
+  let finalQuery = mainQuery;
+  const finalQueryParams = [...mainQueryParams];
+  let finalParamIndex = mainQueryParams.length + 1;
+
+  if (origenes.length > 0 || origenExclude) {
+    const origenConditions = [];
+    
+    // Step 1: Exclude records where origen matches the 5th field (ORIGEN NO ES)
+    if (origenExclude) {
+      origenConditions.push(`(
+        origen IS NULL OR 
+        origen NOT ILIKE $${finalParamIndex} AND
+        SIMILARITY(LOWER(unaccent(origen)), LOWER(unaccent($${finalParamIndex}))) <= 0.3 AND
+        NOT (LOWER(unaccent(origen)) % LOWER(unaccent($${finalParamIndex})))
+      )`);
+      finalQueryParams.push(`%${origenExclude}%`);
+      finalParamIndex++;
+    }
+    
+    // Step 2: Include records where origen matches any of the first four fields
+    if (origenes.length > 0) {
+      const origenIncludeConditions = origenes.map((_, index) => {
+        return `(
+          origen ILIKE $${finalParamIndex + index} OR
+          SIMILARITY(LOWER(unaccent(origen)), LOWER(unaccent($${
+            finalParamIndex + index
+          }))) > 0.3 OR
+          LOWER(unaccent(origen)) % LOWER(unaccent($${finalParamIndex + index}))
+        )`;
+      });
+      origenConditions.push(`(${origenIncludeConditions.join(" OR ")})`);
+      origenes.forEach((o) => finalQueryParams.push(`%${o}%`));
+      finalParamIndex += origenes.length;
+    }
+    
+    // Add ORIGEN conditions to the query
+    if (origenConditions.length > 0) {
+      const whereClause = mainConditions.length > 0 ? " AND " : " WHERE ";
+      finalQuery += whereClause + `(${origenConditions.join(" AND ")})`;
+    }
+  }
+
+  // If no conditions at all, return nothing
+  if (mainConditions.length === 0 && origenes.length === 0 && !origenExclude) {
     return res.json({ results: [], title: "No search criteria provided." });
   }
 
-  // Combine conditions with AND or OR
-  const searchOperator = searchType === "AND" ? " AND " : " OR ";
-  query += conditions.join(searchOperator);
-  query += " ORDER BY id;";
+  finalQuery += " ORDER BY id;";
 
   try {
     console.log("\n=== Query Details ===");
@@ -390,12 +452,14 @@ app.post("/search", async (req, res) => {
       productos,
       descripciones,
       materiales,
+      origenes,
+      origenExclude,
       searchType,
     });
-    console.log("Executing query:", query);
-    console.log("Query parameters:", queryParams);
+    console.log("Executing query:", finalQuery);
+    console.log("Query parameters:", finalQueryParams);
 
-    const { rows } = await pool.query(query, queryParams);
+    const { rows } = await pool.query(finalQuery, finalQueryParams);
 
     // Create a summary title for the results
     const titleParts = [];
@@ -405,6 +469,10 @@ app.post("/search", async (req, res) => {
       titleParts.push(`DESCRIPCION: ${descripciones.join(" or ")}`);
     if (materiales.length > 0)
       titleParts.push(`MATERIAL: ${materiales.join(" or ")}`);
+    if (origenes.length > 0)
+      titleParts.push(`ORIGEN: ${origenes.join(" or ")}`);
+    if (origenExclude)
+      titleParts.push(`ORIGEN NO ES: ${origenExclude}`);
     const title = titleParts.join(` ${searchType} `);
 
     res.json({
@@ -442,88 +510,133 @@ app.post("/export", async (req, res) => {
     const query = "SELECT * FROM products WHERE id = ANY($1) ORDER BY id;";
     const { rows } = await pool.query(query, [ids]);
 
-    // Transform the data and handle images
-    const transformedRows = [];
+    // Create workbook and worksheet using ExcelJS
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet("Products");
 
-    for (const row of rows) {
-      const transformedRow = {};
+    // Get all column names for headers
+    const columnNames = Object.values(SQL_TO_HEADER_MAP);
+    columnNames.push("IMAGE"); // Add image column
+
+    // Add headers row
+    const headerRow = worksheet.addRow(columnNames);
+    
+    // Style the header row - bold, capitalized, and proper height
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, size: 12 };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      // Capitalize the text
+      if (cell.value && typeof cell.value === 'string') {
+        cell.value = cell.value.toUpperCase();
+      }
+    });
+
+    // Set header row height for 2 lines
+    headerRow.height = 30;
+
+    // Set column widths
+    columnNames.forEach((colName, index) => {
+      const column = worksheet.getColumn(index + 1);
+      if (colName === "IMAGE") {
+        column.width = 30; // Wider for images
+      } else {
+        column.width = 20; // Standard width
+      }
+    });
+
+    // Process each data row
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      const dataRow = [];
 
       // Transform column names using the mapping
       for (const [sqlColumn, value] of Object.entries(row)) {
         if (SQL_TO_HEADER_MAP[sqlColumn]) {
-          transformedRow[SQL_TO_HEADER_MAP[sqlColumn]] = value;
-        } else {
-          transformedRow[sqlColumn] = value;
+          dataRow.push(value);
         }
       }
 
-      // Handle images
+      // Add image URL placeholder (will be replaced with actual image)
+      const imageUrl = row.product_real_pictures || row.reference_picture;
+      dataRow.push(imageUrl || ""); // Add image URL
+
+      // Add the row to worksheet
+      const addedRow = worksheet.addRow(dataRow);
+
+      // Handle image insertion
       try {
-        // Try product_real_pictures first, then fallback to reference_picture
-        const imageUrl = row.product_real_pictures || row.reference_picture;
         if (imageUrl) {
+          console.log(`=== IMAGE REPLACEMENT DEBUG ===`);
+          console.log(`Record ID: ${row.id}`);
+          console.log(`Image URL to replace: ${imageUrl}`);
+          console.log(`Product: ${row.producto || 'N/A'}`);
+          console.log(`=== END IMAGE DEBUG ===`);
+          
           const response = await axios.get(imageUrl, {
             responseType: "arraybuffer",
           });
 
-          // Resize image to a reasonable size for Excel
+          // Get original image dimensions
+          const metadata = await sharp(response.data).metadata();
+          const originalWidth = metadata.width;
+         console.log(`Original Width: ${originalWidth}`);
+
+          const originalHeight = metadata.height;
+
+          // Calculate proportional width for 100px height
+          const targetHeight = 100;
+          const proportionalWidth = Math.round((originalWidth * targetHeight) / originalHeight);
+
+          // Resize image to 100px height with proportional width
           const resizedImage = await sharp(response.data)
-            .resize(200, 200, { fit: "inside" })
+            .resize(proportionalWidth, targetHeight, { fit: "inside" })
+            .jpeg({ quality: 80 })
             .toBuffer();
 
-          // Convert to base64
-          const base64Image = resizedImage.toString("base64");
+          // Add image to workbook
+          const imageId = workbook.addImage({
+            buffer: resizedImage,
+            extension: 'jpeg',
+          });
 
-          // Add image data to the row
-          transformedRow["IMAGE"] = {
-            v: "", // The cell value will be empty
-            l: {
-              // This defines the image to be placed in the cell
-              Target: `data:image/jpeg;base64,${base64Image}`,
-              Rel: { Type: "image" },
-            },
-          };
+          // Add image to worksheet
+          const imageColumnIndex = columnNames.length; // Last column
+          console.log(`Adding image at column: ${imageColumnIndex - 1}, row: ${i + 1}`);
+          console.log(`Image dimensions: ${proportionalWidth}x${targetHeight}`);
+          console.log(`Total columns: ${columnNames.length}`);
+          
+          worksheet.addImage(imageId, {
+            tl: { col: imageColumnIndex - 1, row: i + 1 }, // +1 because header row
+            ext: { width: proportionalWidth, height: targetHeight },
+          });
+
+          // Clear the URL from the cell
+          const imageCell = addedRow.getCell(imageColumnIndex);
+          imageCell.value = "";
+
+          // Set row height to accommodate the image
+          addedRow.height = targetHeight + 10; // Add some padding
+
+          console.log(`Successfully added image for record ${row.id}`);
+        } else {
+          // No image available
+          addedRow.height = 20; // Default height
         }
       } catch (imageError) {
-        console.error(
-          `Error processing image for record ${row.id}:`,
-          imageError
-        );
-        transformedRow["IMAGE"] = "Image not available";
+        console.error(`Error processing image for record ${row.id}:`, imageError);
+        addedRow.height = 20; // Default height
       }
-
-      transformedRows.push(transformedRow);
     }
 
-    // Create workbook and worksheet
-    const workbook = xlsx.utils.book_new();
-    const worksheet = xlsx.utils.json_to_sheet(transformedRows);
-
-    // Set column widths
-    const colWidths = [];
-    for (const key in SQL_TO_HEADER_MAP) {
-      colWidths.push({ wch: 20 }); // Set width to 20 characters
-    }
-    colWidths.push({ wch: 30 }); // Width for image column
-    worksheet["!cols"] = colWidths;
-
-    // Set row heights (to accommodate images)
-    const rowHeights = [];
-    for (let i = 0; i <= transformedRows.length; i++) {
-      rowHeights.push({ hpt: 150 }); // Set height to 150 points
-    }
-    worksheet["!rows"] = rowHeights;
-
-    xlsx.utils.book_append_sheet(workbook, worksheet, "Products");
-
-    // Send the file
+    // Set up response headers
     res.setHeader(
       "Content-Type",
       "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     );
     res.setHeader("Content-Disposition", "attachment; filename=products.xlsx");
 
-    const buffer = xlsx.write(workbook, { type: "buffer", bookType: "xlsx" });
+    // Write workbook to buffer and send
+    const buffer = await workbook.xlsx.writeBuffer();
     res.send(buffer);
   } catch (err) {
     console.error("Export error", err.stack);
