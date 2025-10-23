@@ -11,6 +11,8 @@ const sharp = require("sharp");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const dummy=0
+
 // IMPORTANT: Use Environment Variables for your database connection string
 // In Render.com, you will set this in the "Environment" tab.
 // For local development, you can create a .env file (and use npm install dotenv)
@@ -28,7 +30,7 @@ const pool = new Pool({
   keepAliveInitialDelayMillis: 10000, // Start keep-alive probes after 10 seconds
 });
 
-// Add error handler for the pool
+// Add error handler for the pool.
 pool.on("error", (err, client) => {
   console.error("Unexpected error on idle client", err);
 });
@@ -514,116 +516,95 @@ app.post("/export", async (req, res) => {
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet("Products");
 
-    // Get all column names for headers
-    const columnNames = Object.values(SQL_TO_HEADER_MAP);
-    columnNames.push("IMAGE"); // Add image column
+    // Get header names from the SQL to Header mapping
+    const headers = Object.values(SQL_TO_HEADER_MAP);
+    const sqlColumns = Object.keys(SQL_TO_HEADER_MAP);
 
     // Add headers row
-    const headerRow = worksheet.addRow(columnNames);
-    
+    const headerRow = worksheet.addRow(headers);
+
     // Style the header row - bold, capitalized, and proper height
     headerRow.eachCell((cell) => {
       cell.font = { bold: true, size: 12 };
-      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.alignment = { horizontal: "center", vertical: "middle" };
       // Capitalize the text
-      if (cell.value && typeof cell.value === 'string') {
+      if (cell.value && typeof cell.value === "string") {
         cell.value = cell.value.toUpperCase();
       }
     });
-
-    // Set header row height for 2 lines
     headerRow.height = 30;
 
     // Set column widths
-    columnNames.forEach((colName, index) => {
+    headers.forEach((header, index) => {
       const column = worksheet.getColumn(index + 1);
-      if (colName === "IMAGE") {
+      if (header === "REFERENCE PICTURE" || header === "PRODUCT REAL PICTURES") {
         column.width = 30; // Wider for images
       } else {
         column.width = 20; // Standard width
       }
     });
 
+    // Create a map of SQL column name to Excel column index (1-based)
+    const sqlColumnIndexMap = {};
+    sqlColumns.forEach((sqlCol, index) => {
+      sqlColumnIndexMap[sqlCol] = index + 1;
+    });
+
     // Process each data row
     for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const dataRow = [];
+      const dbRow = rows[i];
+      const excelRowData = sqlColumns.map((col) => dbRow[col]);
 
-      // Transform column names using the mapping
-      for (const [sqlColumn, value] of Object.entries(row)) {
-        if (SQL_TO_HEADER_MAP[sqlColumn]) {
-          dataRow.push(value);
+      const addedRow = worksheet.addRow(excelRowData);
+      let rowHasImage = false;
+
+      const imageColumns = ["reference_picture", "product_real_pictures"];
+      for (const sqlColumn of imageColumns) {
+        const imageUrl = dbRow[sqlColumn];
+        const columnIndex = sqlColumnIndexMap[sqlColumn];
+
+        if (imageUrl && columnIndex) {
+          try {
+            const response = await axios.get(imageUrl, {
+              responseType: "arraybuffer",
+            });
+
+            const metadata = await sharp(response.data).metadata();
+            const targetHeight = 100;
+            const proportionalWidth = Math.round(
+              (metadata.width * targetHeight) / metadata.height
+            );
+
+            const resizedImage = await sharp(response.data)
+              .resize(proportionalWidth, targetHeight, { fit: "inside" })
+              .jpeg({ quality: 80 })
+              .toBuffer();
+
+            const imageId = workbook.addImage({
+              buffer: resizedImage,
+              extension: "jpeg",
+            });
+
+            worksheet.addImage(imageId, {
+              tl: { col: columnIndex - 1, row: i + 1 },
+              ext: { width: proportionalWidth, height: targetHeight },
+            });
+
+            const imageCell = addedRow.getCell(columnIndex);
+            imageCell.value = ""; // Clear the URL
+            rowHasImage = true;
+          } catch (imageError) {
+            console.error(
+              `Error processing image for record ${dbRow.id} (${sqlColumn}):`,
+              imageError.message
+            );
+          }
         }
       }
 
-      // Add image URL placeholder (will be replaced with actual image)
-      const imageUrl = row.product_real_pictures || row.reference_picture;
-      dataRow.push(imageUrl || ""); // Add image URL
-
-      // Add the row to worksheet
-      const addedRow = worksheet.addRow(dataRow);
-
-      // Handle image insertion
-      try {
-        if (imageUrl) {
-          console.log(`=== IMAGE REPLACEMENT DEBUG ===`);
-          console.log(`Record ID: ${row.id}`);
-          console.log(`Image URL to replace: ${imageUrl}`);
-          console.log(`Product: ${row.producto || 'N/A'}`);
-          console.log(`=== END IMAGE DEBUG ===`);
-          
-          const response = await axios.get(imageUrl, {
-            responseType: "arraybuffer",
-          });
-
-          // Get original image dimensions
-          const metadata = await sharp(response.data).metadata();
-          const originalWidth = metadata.width;
-         console.log(`Original Width: ${originalWidth}`);
-
-          const originalHeight = metadata.height;
-
-          // Calculate proportional width for 100px height
-          const targetHeight = 100;
-          const proportionalWidth = Math.round((originalWidth * targetHeight) / originalHeight);
-
-          // Resize image to 100px height with proportional width
-          const resizedImage = await sharp(response.data)
-            .resize(proportionalWidth, targetHeight, { fit: "inside" })
-            .jpeg({ quality: 80 })
-            .toBuffer();
-
-          // Add image to workbook
-          const imageId = workbook.addImage({
-            buffer: resizedImage,
-            extension: 'jpeg',
-          });
-
-          // Add image to worksheet
-          const imageColumnIndex = columnNames.length; // Last column
-          console.log(`Adding image at column: ${imageColumnIndex - 1}, row: ${i + 1}`);
-          console.log(`Image dimensions: ${proportionalWidth}x${targetHeight}`);
-          console.log(`Total columns: ${columnNames.length}`);
-          
-          worksheet.addImage(imageId, {
-            tl: { col: imageColumnIndex - 1, row: i + 1 }, // +1 because header row
-            ext: { width: proportionalWidth, height: targetHeight },
-          });
-
-          // Clear the URL from the cell
-          const imageCell = addedRow.getCell(imageColumnIndex);
-          imageCell.value = "";
-
-          // Set row height to accommodate the image
-          addedRow.height = targetHeight + 10; // Add some padding
-
-          console.log(`Successfully added image for record ${row.id}`);
-        } else {
-          // No image available
-          addedRow.height = 20; // Default height
-        }
-      } catch (imageError) {
-        console.error(`Error processing image for record ${row.id}:`, imageError);
+      if (rowHasImage) {
+        addedRow.height = 110; // Height for rows with images
+      } else {
         addedRow.height = 20; // Default height
       }
     }
