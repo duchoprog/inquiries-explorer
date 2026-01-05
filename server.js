@@ -481,12 +481,228 @@ app.post("/search", async (req, res) => {
       results: rows,
       title: title,
       noResults: rows.length === 0,
+      type: "products",
     });
   } catch (err) {
     console.error("Database query error", err.stack);
     res
       .status(500)
       .json({ error: "An error occurred while searching the database." });
+  }
+});
+// Invoice search route
+app.post("/search-invoices", async (req, res) => {
+  const {
+    searchTypeInv,
+    // proyecto fields
+    proyecto_inv_1,
+    proyecto_inv_2,
+    proyecto_inv_3,
+    proyecto_inv_4,
+    proyecto_inv_5,
+    // producto fields
+    producto_inv_1,
+    producto_inv_2,
+    producto_inv_3,
+    producto_inv_4,
+    producto_inv_5,
+    // descripcion fields
+    descripcion_inv_1,
+    descripcion_inv_2,
+    descripcion_inv_3,
+    descripcion_inv_4,
+    descripcion_inv_5,
+    // origen (pais) fields
+    origen_inv_1,
+    origen_inv_2,
+    origen_inv_3,
+    origen_inv_4,
+    origen_inv_5,
+  } = req.body;
+
+  const proyectos = [
+    proyecto_inv_1,
+    proyecto_inv_2,
+    proyecto_inv_3,
+    proyecto_inv_4,
+    proyecto_inv_5,
+  ].filter((p) => p && p !== "");
+
+  const productosInv = [
+    producto_inv_1,
+    producto_inv_2,
+    producto_inv_3,
+    producto_inv_4,
+    producto_inv_5,
+  ].filter((p) => p && p !== "");
+
+  const descripcionesInv = [
+    descripcion_inv_1,
+    descripcion_inv_2,
+    descripcion_inv_3,
+    descripcion_inv_4,
+    descripcion_inv_5,
+  ].filter((d) => d && d !== "");
+
+  const paises = [
+    origen_inv_1,
+    origen_inv_2,
+    origen_inv_3,
+    origen_inv_4,
+  ].filter((o) => o && o !== "");
+
+  const paisExclude = origen_inv_5 && origen_inv_5 !== "" ? origen_inv_5 : null;
+
+  let mainQuery = "SELECT * FROM invoices";
+  const mainQueryParams = [];
+  const mainConditions = [];
+  let paramIndex = 1;
+
+  // PROYECTO
+  if (proyectos.length > 0) {
+    const conditions = proyectos.map((_, idx) => {
+      return `(
+        proyecto ILIKE $${paramIndex + idx} OR
+        SIMILARITY(LOWER(unaccent(proyecto)), LOWER(unaccent($${
+          paramIndex + idx
+        }))) > 0.3 OR
+        LOWER(unaccent(proyecto)) % LOWER(unaccent($${paramIndex + idx}))
+      )`;
+    });
+    mainConditions.push(`(${conditions.join(" OR ")})`);
+    proyectos.forEach((p) => mainQueryParams.push(`%${p}%`));
+    paramIndex += proyectos.length;
+  }
+
+  // PRODUCTO
+  if (productosInv.length > 0) {
+    const conditions = productosInv.map((_, idx) => {
+      return `(
+        producto ILIKE $${paramIndex + idx} OR
+        SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${
+          paramIndex + idx
+        }))) > 0.3 OR
+        LOWER(unaccent(producto)) % LOWER(unaccent($${paramIndex + idx}))
+      )`;
+    });
+    mainConditions.push(`(${conditions.join(" OR ")})`);
+    productosInv.forEach((p) => mainQueryParams.push(`%${p}%`));
+    paramIndex += productosInv.length;
+  }
+
+  // DESCRIPCION
+  if (descripcionesInv.length > 0) {
+    const conditions = descripcionesInv.map((_, idx) => {
+      return `(
+        descripcion ILIKE $${paramIndex + idx} OR
+        SIMILARITY(LOWER(unaccent(descripcion)), LOWER(unaccent($${
+          paramIndex + idx
+        }))) > 0.3 OR
+        LOWER(unaccent(descripcion)) % LOWER(unaccent($${paramIndex + idx}))
+      )`;
+    });
+    mainConditions.push(`(${conditions.join(" OR ")})`);
+    descripcionesInv.forEach((d) => mainQueryParams.push(`%${d}%`));
+    paramIndex += descripcionesInv.length;
+  }
+
+  // Build final query and apply ORIGEN (pais) filters
+  let finalQuery = mainQuery;
+  const finalQueryParams = [...mainQueryParams];
+  let finalParamIndex = mainQueryParams.length + 1;
+
+  if (mainConditions.length > 0) {
+    const searchOperator = searchTypeInv === "AND" ? " AND " : " OR ";
+    finalQuery += " WHERE " + mainConditions.join(searchOperator);
+  }
+
+  if (paises.length > 0 || paisExclude) {
+    const origenConditions = [];
+
+    if (paisExclude) {
+      origenConditions.push(`(
+        pais IS NULL OR
+        pais NOT ILIKE $${finalParamIndex} AND
+        SIMILARITY(LOWER(unaccent(pais)), LOWER(unaccent($${finalParamIndex}))) <= 0.3 AND
+        NOT (LOWER(unaccent(pais)) % LOWER(unaccent($${finalParamIndex})))
+      )`);
+      finalQueryParams.push(`%${paisExclude}%`);
+      finalParamIndex++;
+    }
+
+    if (paises.length > 0) {
+      const includeConds = paises.map((_, idx) => {
+        return `(
+          pais ILIKE $${finalParamIndex + idx} OR
+          SIMILARITY(LOWER(unaccent(pais)), LOWER(unaccent($${
+            finalParamIndex + idx
+          }))) > 0.3 OR
+          LOWER(unaccent(pais)) % LOWER(unaccent($${finalParamIndex + idx}))
+        )`;
+      });
+      origenConditions.push(`(${includeConds.join(" OR ")})`);
+      paises.forEach((p) => finalQueryParams.push(`%${p}%`));
+      finalParamIndex += paises.length;
+    }
+
+    if (origenConditions.length > 0) {
+      const whereClause = mainConditions.length > 0 ? " AND " : " WHERE ";
+      finalQuery += whereClause + `(${origenConditions.join(" AND ")})`;
+    }
+  }
+
+  // If no filters provided at all
+  if (
+    mainConditions.length === 0 &&
+    paises.length === 0 &&
+    !paisExclude
+  ) {
+    return res.json({
+      results: [],
+      title: "No search criteria provided.",
+      type: "invoices",
+    });
+  }
+
+  finalQuery += " ORDER BY id;";
+
+  try {
+    console.log("\n=== Invoice Query Details ===");
+    console.log("Parameters received:", {
+      proyectos,
+      productosInv,
+      descripcionesInv,
+      paises,
+      paisExclude,
+      searchTypeInv,
+    });
+    console.log("Executing query:", finalQuery);
+    console.log("Query parameters:", finalQueryParams);
+
+    const { rows } = await pool.query(finalQuery, finalQueryParams);
+
+    const titleParts = [];
+    if (proyectos.length > 0)
+      titleParts.push(`PROYECTO: ${proyectos.join(" or ")}`);
+    if (productosInv.length > 0)
+      titleParts.push(`PRODUCTO: ${productosInv.join(" or ")}`);
+    if (descripcionesInv.length > 0)
+      titleParts.push(`DESCRIPCION: ${descripcionesInv.join(" or ")}`);
+    if (paises.length > 0) titleParts.push(`PAIS: ${paises.join(" or ")}`);
+    if (paisExclude) titleParts.push(`PAIS NO ES: ${paisExclude}`);
+    const title = titleParts.join(` ${searchTypeInv || "OR"} `);
+
+    res.json({
+      results: rows,
+      title,
+      noResults: rows.length === 0,
+      type: "invoices",
+    });
+  } catch (err) {
+    console.error("Invoice search error", err.stack);
+    res
+      .status(500)
+      .json({ error: "An error occurred while searching invoices." });
   }
 });
 app.get("/test-query", async (req, res) => {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Búsqueda de Productos</title>
+    <title>GBP Búsquedas</title>
     <link
       href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
       rel="stylesheet"
@@ -57,144 +57,335 @@
     <div class="container mt-5 mb-5">
       <div class="card">
         <div class="card-header">
-          <h2>Búsqueda en Base de Datos de Productos</h2>
+          <h2>Búsquedas en Base de Datos</h2>
         </div>
         <div class="card-body">
-          <form id="searchForm">
-            <div class="mb-3">
-              <label class="form-label fw-bold"
-                >PRODUCTO (seleccione hasta 5)</label
+          <ul class="nav nav-tabs" id="searchTab" role="tablist">
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link active"
+                id="products-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#products-tab-pane"
+                type="button"
+                role="tab"
+                aria-controls="products-tab-pane"
+                aria-selected="true"
               >
-              <div class="row">
-                <% for(let i = 1; i <= 5; i++) { %>
-                <div class="col">
-                  <select
-                    class="form-select mb-2"
-                    name="producto<%= i %>"
-                    id="producto<%= i %>"
+                Búsqueda en Inquiries
+              </button>
+            </li>
+            <li class="nav-item" role="presentation">
+              <button
+                class="nav-link"
+                id="invoices-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#invoices-tab-pane"
+                type="button"
+                role="tab"
+                aria-controls="invoices-tab-pane"
+                aria-selected="false"
+              >
+                Búsqueda en Invoices
+              </button>
+            </li>
+          </ul>
+          <div class="tab-content pt-3" id="searchTabContent">
+            <div
+              class="tab-pane fade show active"
+              id="products-tab-pane"
+              role="tabpanel"
+              aria-labelledby="products-tab"
+              tabindex="0"
+            >
+              <!-- Product Search Form -->
+              <form id="productSearchForm">
+                <div class="mb-3">
+                  <label class="form-label fw-bold"
+                    >PRODUCTO (seleccione hasta 5)</label
                   >
-                    <option value="">Seleccione un producto...</option>
-                    <% productoOptions.forEach(function(option){ %>
-                    <option value="<%= option %>"><%= option %></option>
-                    <% }); %>
-                  </select>
+                  <div class="row">
+                    <% for(let i = 1; i <= 5; i++) { %>
+                    <div class="col">
+                      <select
+                        class="form-select mb-2"
+                        name="producto<%= i %>"
+                        id="producto<%= i %>"
+                      >
+                        <option value="">Seleccione un producto...</option>
+                        <% productoOptions.forEach(function(option){ %>
+                        <option value="<%= option %>"><%= option %></option>
+                        <% }); %>
+                      </select>
+                    </div>
+                    <% } %>
+                  </div>
                 </div>
-                <% } %>
-              </div>
-            </div>
 
-            <div class="mb-3">
-              <label class="form-label fw-bold">DESCRIPCIÓN</label>
-              <div class="row">
-                <% for(let i = 1; i <= 5; i++) { %>
-                <div class="col">
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="descripcion<%= i %>"
-                    name="descripcion<%= i %>"
-                    placeholder="Descripción <%= i %>"
-                  />
+                <div class="mb-3">
+                  <label class="form-label fw-bold">DESCRIPCIÓN</label>
+                  <div class="row">
+                    <% for(let i = 1; i <= 5; i++) { %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="descripcion<%= i %>"
+                        name="descripcion<%= i %>"
+                        placeholder="Descripción <%= i %>"
+                      />
+                    </div>
+                    <% } %>
+                  </div>
                 </div>
-                <% } %>
-              </div>
-            </div>
 
-            <div class="mb-3">
-              <label class="form-label fw-bold">MATERIAL</label>
-              <div class="row">
-                <% for(let i = 1; i <= 5; i++) { %>
-                <div class="col">
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="material<%= i %>"
-                    name="material<%= i %>"
-                    placeholder="Material <%= i %>"
-                  />
+                <div class="mb-3">
+                  <label class="form-label fw-bold">MATERIAL</label>
+                  <div class="row">
+                    <% for(let i = 1; i <= 5; i++) { %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="material<%= i %>"
+                        name="material<%= i %>"
+                        placeholder="Material <%= i %>"
+                      />
+                    </div>
+                    <% } %>
+                  </div>
                 </div>
-                <% } %>
-              </div>
-            </div>
 
-            <div class="mb-3">
-              <div class="row">
-                <div class="col">
-                  <label class="form-label fw-bold">ORIGEN</label>
+                <div class="mb-3">
+                  <div class="row">
+                    <div class="col">
+                      <label class="form-label fw-bold">ORIGEN</label>
+                    </div>
+                    <div class="col"></div>
+                    <div class="col"></div>
+                    <div class="col"></div>
+                    <div class="col">
+                      <label class="form-label fw-bold text-danger"
+                        >ORIGEN NO ES</label
+                      >
+                    </div>
+                  </div>
+                  <div class="row">
+                    <% for(let i = 1; i <= 4; i++) { %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="origen<%= i %>"
+                        name="origen<%= i %>"
+                        placeholder="Origen <%= i %>"
+                      />
+                    </div>
+                    <% } %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="origen5"
+                        name="origen5"
+                        placeholder="Origen a excluir"
+                      />
+                    </div>
+                  </div>
                 </div>
-                <div class="col">
-                </div>
-                <div class="col">
-                </div>
-                <div class="col">
-                </div>
-                <div class="col">
-                  <label class="form-label fw-bold text-danger">ORIGEN NO ES</label>
-                </div>
-              </div>
-              <div class="row">
-                <% for(let i = 1; i <= 4; i++) { %>
-                <div class="col">
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="origen<%= i %>"
-                    name="origen<%= i %>"
-                    placeholder="Origen <%= i %>"
-                  />
-                </div>
-                <% } %>
-                <div class="col">
-                  <input
-                    type="text"
-                    class="form-control"
-                    id="origen5"
-                    name="origen5"
-                    placeholder="Origen a excluir"
-                  />
-                </div>
-              </div>
-            </div>
 
-            <div class="row align-items-center">
-              <div class="col-md-6 mb-3">
-                <label class="form-label fw-bold">Lógica de Búsqueda</label>
-                <div class="form-check">
-                  <input
-                    class="form-check-input"
-                    type="radio"
-                    name="searchType"
-                    id="searchTypeOR"
-                    value="OR"
-                    checked
-                  />
-                  <label class="form-check-label" for="searchTypeOR">
-                    Coincidir con CUALQUIER criterio (más amplio)
-                  </label>
+                <div class="row align-items-center">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label fw-bold">Lógica de Búsqueda</label>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="searchType"
+                        id="searchTypeOR"
+                        value="OR"
+                        checked
+                      />
+                      <label class="form-check-label" for="searchTypeOR">
+                        Coincidir con CUALQUIER criterio (más amplio)
+                      </label>
+                    </div>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="searchType"
+                        id="searchTypeAND"
+                        value="AND"
+                      />
+                      <label class="form-check-label" for="searchTypeAND">
+                        Coincidir con TODOS los criterios (más específico)
+                      </label>
+                    </div>
+                  </div>
+                  <div class="col-md-6 mb-3 d-flex justify-content-end gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-lg"
+                      onclick="resetForm('productSearchForm')"
+                    >
+                      Limpiar
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-lg">
+                      Buscar
+                    </button>
+                  </div>
                 </div>
-                <div class="form-check">
-                  <input
-                    class="form-check-input"
-                    type="radio"
-                    name="searchType"
-                    id="searchTypeAND"
-                    value="AND"
-                  />
-                  <label class="form-check-label" for="searchTypeAND">
-                    Coincidir con TODOS los criterios (más específico)
-                  </label>
-                </div>
-              </div>
-              <div class="col-md-6 mb-3 d-flex justify-content-end gap-2">
-                <button type="button" class="btn btn-secondary btn-lg" onclick="resetForm()">
-                  Limpiar
-                </button>
-                <button type="submit" class="btn btn-primary btn-lg">
-                  Buscar
-                </button>
-              </div>
+              </form>
             </div>
-          </form>
+            <div
+              class="tab-pane fade"
+              id="invoices-tab-pane"
+              role="tabpanel"
+              aria-labelledby="invoices-tab"
+              tabindex="0"
+            >
+              <!-- Invoice Search Form -->
+              <form id="invoiceSearchForm">
+                <div class="mb-3">
+                  <label class="form-label fw-bold">PROYECTO</label>
+                  <div class="row">
+                    <% for(let i = 1; i <= 5; i++) { %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="proyecto_inv_<%= i %>"
+                        name="proyecto_inv_<%= i %>"
+                        placeholder="Proyecto <%= i %>"
+                      />
+                    </div>
+                    <% } %>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label fw-bold"
+                    >PRODUCTO (seleccione hasta 5)</label
+                  >
+                  <div class="row">
+                    <% for(let i = 1; i <= 5; i++) { %>
+                    <div class="col">
+                      <select
+                        class="form-select mb-2"
+                        name="producto_inv_<%= i %>"
+                        id="producto_inv_<%= i %>"
+                      >
+                        <option value="">Seleccione un producto...</option>
+                        <% productoOptions.forEach(function(option){ %>
+                        <option value="<%= option %>"><%= option %></option>
+                        <% }); %>
+                      </select>
+                    </div>
+                    <% } %>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <label class="form-label fw-bold">DESCRIPCIÓN</label>
+                  <div class="row">
+                    <% for(let i = 1; i <= 5; i++) { %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="descripcion_inv_<%= i %>"
+                        name="descripcion_inv_<%= i %>"
+                        placeholder="Descripción <%= i %>"
+                      />
+                    </div>
+                    <% } %>
+                  </div>
+                </div>
+
+                <div class="mb-3">
+                  <div class="row">
+                    <div class="col">
+                      <label class="form-label fw-bold">ORIGEN</label>
+                    </div>
+                    <div class="col"></div>
+                    <div class="col"></div>
+                    <div class="col"></div>
+                    <div class="col">
+                      <label class="form-label fw-bold text-danger"
+                        >ORIGEN NO ES</label
+                      >
+                    </div>
+                  </div>
+                  <div class="row">
+                    <% for(let i = 1; i <= 4; i++) { %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="origen_inv_<%= i %>"
+                        name="origen_inv_<%= i %>"
+                        placeholder="Origen <%= i %>"
+                      />
+                    </div>
+                    <% } %>
+                    <div class="col">
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="origen_inv_5"
+                        name="origen_inv_5"
+                        placeholder="Origen a excluir"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="row align-items-center">
+                  <div class="col-md-6 mb-3">
+                    <label class="form-label fw-bold">Lógica de Búsqueda</label>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="searchTypeInv"
+                        id="searchTypeORInv"
+                        value="OR"
+                        checked
+                      />
+                      <label class="form-check-label" for="searchTypeORInv">
+                        Coincidir con CUALQUIER criterio (más amplio)
+                      </label>
+                    </div>
+                    <div class="form-check">
+                      <input
+                        class="form-check-input"
+                        type="radio"
+                        name="searchTypeInv"
+                        id="searchTypeANDInv"
+                        value="AND"
+                      />
+                      <label class="form-check-label" for="searchTypeANDInv">
+                        Coincidir con TODOS los criterios (más específico)
+                      </label>
+                    </div>
+                  </div>
+                  <div class="col-md-6 mb-3 d-flex justify-content-end gap-2">
+                    <button
+                      type="button"
+                      class="btn btn-secondary btn-lg"
+                      onclick="resetForm('invoiceSearchForm')"
+                    >
+                      Limpiar
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-lg">
+                      Buscar
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -221,46 +412,52 @@
         <div id="results-container"></div>
       </div>
     </div>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-      const searchForm = document.getElementById("searchForm");
+      const productSearchForm = document.getElementById("productSearchForm");
+      const invoiceSearchForm = document.getElementById("invoiceSearchForm");
       const resultsContainer = document.getElementById("results-container");
       const globalActions = document.getElementById("global-actions");
       let currentResultSets = [];
 
-      function resetForm() {
-        // Reset all form fields
-        searchForm.reset();
-        
-        // Clear results
-        currentResultSets = [];
-        resultsContainer.innerHTML = "";
-        globalActions.style.display = "none";
+      function resetForm(formId) {
+        const form = document.getElementById(formId);
+        if (form) {
+          form.reset();
+        }
+
+        // For now, only a product form reset should clear the results.
+        if (formId === "productSearchForm") {
+          currentResultSets = [];
+          resultsContainer.innerHTML = "";
+          globalActions.style.display = "none";
+        }
       }
 
       function makeClickableIfValid(value) {
         if (!value || value === "N/A") return value;
-        
+
         // Check if it's an email address
-        if (value.includes('@')) {
+        if (value.includes("@")) {
           return `<a href="mailto:${value}" class="text-decoration-none">${value}</a>`;
         }
-        
+
         // Check if it's a website URL (has a top-level domain)
-        const urlPattern = /^(https?:\/\/)?([\da-z\.-]+\.)+([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
+        const urlPattern =
+          /^(https?:\/\/)?([\da-z\.-]+\.)+([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
         if (urlPattern.test(value)) {
           // Add http:// if no protocol is specified
-          const href = value.startsWith('http') ? value : `http://${value}`;
+          const href = value.startsWith("http") ? value : `http://${value}`;
           return `<a href="${href}" target="_blank" class="text-decoration-none">${value}</a>`;
         }
-        
+
         return value;
       }
 
-      searchForm.addEventListener("submit", async (e) => {
+      productSearchForm.addEventListener("submit", async (e) => {
         e.preventDefault();
-        console.log("Submitting search form...");
-        const formData = new FormData(searchForm);
+        console.log("Submitting product search form...");
+        const formData = new FormData(productSearchForm);
         const data = Object.fromEntries(formData.entries());
         const response = await fetch("/search", {
           method: "POST",
@@ -268,6 +465,32 @@
           body: new URLSearchParams(data),
         });
         const newResultSet = await response.json();
+        newResultSet.type = newResultSet.type || "products";
+        let addToExisting = false;
+        if (currentResultSets.length > 0) {
+          addToExisting = confirm(
+            "¿Desea agregar estos resultados a la lista existente? (Cancelar para reemplazar)"
+          );
+        }
+        if (addToExisting) {
+          currentResultSets.push(newResultSet);
+        } else {
+          currentResultSets = [newResultSet];
+        }
+        renderResults();
+      });
+
+      invoiceSearchForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const formData = new FormData(invoiceSearchForm);
+        const data = Object.fromEntries(formData.entries());
+        const response = await fetch("/search-invoices", {
+          method: "POST",
+          headers: { "Content-Type": "application/x-www-form-urlencoded" },
+          body: new URLSearchParams(data),
+        });
+        const newResultSet = await response.json();
+        newResultSet.type = newResultSet.type || "invoices";
         let addToExisting = false;
         if (currentResultSets.length > 0) {
           addToExisting = confirm(
@@ -323,23 +546,32 @@
           const list = document.createElement("ul");
           list.className = "result-list";
           set.results.forEach((record) => {
-            const li = document.createElement("li");
-            li.dataset.id = record.id;
-            li.style.display = "flex";
-            li.style.alignItems = "start";
-            li.style.gap = "15px";
-            li.innerHTML = `
+            const li =
+              set.type === "invoices"
+                ? renderInvoiceCard(record)
+                : renderProductCard(record);
+            if (li) list.appendChild(li);
+          });
+          resultSetDiv.innerHTML = header;
+          resultSetDiv.appendChild(list);
+          resultsContainer.appendChild(resultSetDiv);
+        });
+      }
+
+      function renderProductCard(record) {
+        const li = document.createElement("li");
+        li.dataset.id = record.id;
+        li.style.display = "flex";
+        li.style.alignItems = "start";
+        li.style.gap = "15px";
+        li.innerHTML = `
         <div style="flex: 60%">
-          <a href="${record.url || "#"}" target="_blank" class="fw-bold">${
-              record.project || "Sin Proyecto"
-            }</a>
+          <a href="${record.url || "#"}" target="_blank" class="fw-bold">${record.project || "Sin Proyecto"}</a>
           <div class="mt-2">
             <div><u>Company Name:</u> ${record.company_name || "N/A"} <span class="text-muted">|</span> <u>Contact:</u> ${makeClickableIfValid(record.sales_contact)}</div>
             <div><u>Wechat:</u> ${record.wechat || "N/A"} <span class="text-muted">|</span> <u>Email:</u> ${makeClickableIfValid(record.email)}</div>
             <div><u>Description:</u> ${record.product_description || "N/A"}</div>
-            <div><u>Real description:</u> ${
-              record.product_real_description || "N/A"
-            }</div>
+            <div><u>Real description:</u> ${record.product_real_description || "N/A"}</div>
             <div class="d-flex gap-3">
               <span><u>Quantity:</u> ${record.quantity || "N/A"}</span>
               <span><u>Price:</u> $${record.price_usd || "N/A"}</span>
@@ -347,25 +579,72 @@
             </div>
           </div>
         </div>
-        <div style="flex: 30%" class="text-center">
-          <img src="${
-            record.product_real_pictures || record.reference_picture || "#"
-          }" 
+        <div style="flex: 25%" class="text-center">
+          <img src="${record.product_real_pictures || record.reference_picture || "#"}" 
                alt="Product Image" 
                class="img-fluid"
                style="max-height: 150px"
                onerror="this.style.display='none'">
         </div>
-        <div style="flex: 10%" class="text-end">
+        <div style="flex: 15%" class="text-end d-flex flex-column gap-2">
           <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
         </div>
       `;
-            list.appendChild(li);
-          });
-          resultSetDiv.innerHTML = header;
-          resultSetDiv.appendChild(list);
-          resultsContainer.appendChild(resultSetDiv);
-        });
+        return li;
+      }
+
+      function renderInvoiceCard(record) {
+        const li = document.createElement("li");
+        li.dataset.id = record.id;
+        li.style.display = "flex";
+        li.style.alignItems = "start";
+        li.style.gap = "15px";
+
+        const imageUrl =
+          record.imagen ||
+          record.img2 ||
+          record.img3 ||
+          record.img4 ||
+          record.img5 ||
+          record.img6 ||
+          record.img7 ||
+          record.img8 ||
+          record.img9 ||
+          record.img10 ||
+          record.img11 ||
+          "#";
+
+        li.innerHTML = `
+        <div style="flex: 60%">
+          <a href="${record.file_url || "#"}" target="_blank" class="fw-bold">ORIGINAL DOCUMENT</a>
+          <div class="mt-2">
+            <div><u>Company Name:</u> ${record.proveedor || "N/A"} <span class="text-muted">|</span> <u>Contact:</u> ${record.persona_de_contacto || "N/A"}</div>
+            <div><u>Wechat:</u> ${record.wechat_telefono || "N/A"} <span class="text-muted">|</span> <u>Email:</u> ${makeClickableIfValid(record.correo)}</div>
+            <div><u>Description:</u> ${record.producto || "N/A"}; ${record.descripcion || "N/A"}</div>
+            <div class="d-flex gap-3">
+              <span><u>Quantity:</u> ${record.cantidad || "N/A"}</span>
+              <span><u>Price:</u> $${record.precio || "N/A"}</span>
+              <span><u>Origin:</u> ${record.pais || "N/A"}</span>
+            </div>
+          </div>
+        </div>
+        <div style="flex: 25%" class="text-center">
+          <img src="${imageUrl}" 
+               alt="Invoice Image" 
+               class="img-fluid"
+               style="max-height: 150px"
+               onerror="this.style.display='none'">
+        </div>
+        <div style="flex: 15%" class="d-flex flex-column align-items-end gap-2">
+          <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
+          ${
+            record.proyecto
+              ? `<button class="btn btn-sm btn-outline-primary" onclick="searchInquiryByProject('${(record.proyecto || "").replace(/'/g, "\\'")}')">Buscar Inquiry para ${record.proyecto}</button>`
+              : ""
+          }
+        </div>
+      `;
+        return li;
       }
 
       function disableRecord(button) {
@@ -411,7 +690,9 @@
       }
 
       async function exportResults() {
-        const idsToExport = Array.from(resultsContainer.querySelectorAll("li"))
+        const idsToExport = Array.from(
+          resultsContainer.querySelectorAll("li")
+        )
           .filter((li) => !li.classList.contains("disabled-record"))
           .map((li) => li.dataset.id);
         if (idsToExport.length === 0) {
@@ -437,6 +718,11 @@
           alert("Error al exportar los datos.");
         }
       }
+
+      function searchInquiryByProject(proyecto) {
+        alert(`Búsqueda por proyecto pendiente de implementar (${proyecto})`);
+      }
+
     </script>
   </body>
 </html>
