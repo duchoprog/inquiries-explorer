@@ -237,6 +237,33 @@
                   </div>
                 </div>
               </form>
+
+              <!-- Product Results Area -->
+              <div class="mt-4">
+                <div class="card mb-3">
+                  <div class="card-body d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0">Resultados de Inquiries (Productos)</h5>
+                    <div class="d-flex gap-2">
+                      <button
+                        class="btn btn-sm btn-outline-secondary"
+                        onclick="printProductResults()"
+                      >
+                        Imprimir Visibles
+                      </button>
+                      <button
+                        class="btn btn-sm btn-outline-success"
+                        onclick="exportProductResults()"
+                      >
+                        Exportar Visibles a XLSX
+                      </button>
+                      <button class="btn btn-sm btn-outline-info" onclick="displayAllProducts()">
+                        Mostrar Todos
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <div id="results-products"></div>
+              </div>
             </div>
             <div
               class="tab-pane fade"
@@ -384,41 +411,76 @@
                   </div>
                 </div>
               </form>
+
+              <!-- Invoice Results Area with sub-tabs -->
+              <div class="mt-4">
+                <ul class="nav nav-tabs" id="invoiceTabsNav" role="tablist">
+                  <li class="nav-item" role="presentation">
+                    <button
+                      class="nav-link active"
+                      id="invoice-main-tab"
+                      data-bs-toggle="tab"
+                      data-bs-target="#invoice-main-pane"
+                      type="button"
+                      role="tab"
+                      aria-controls="invoice-main-pane"
+                      aria-selected="true"
+                    >
+                      Resultados de Invoices
+                    </button>
+                  </li>
+                </ul>
+                <div class="tab-content" id="invoiceTabsContent">
+                  <div
+                    class="tab-pane fade show active"
+                    id="invoice-main-pane"
+                    role="tabpanel"
+                    aria-labelledby="invoice-main-tab"
+                    tabindex="0"
+                  >
+                    <div class="card mb-3 mt-3">
+                      <div class="card-body d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0">Resultados de Invoices (General)</h5>
+                        <div class="d-flex gap-2">
+                          <button
+                            class="btn btn-sm btn-outline-secondary"
+                            onclick="printInvoiceResultsMain()"
+                          >
+                            Imprimir Visibles
+                          </button>
+                          <button
+                            class="btn btn-sm btn-outline-success"
+                            onclick="exportInvoiceResultsMain()"
+                          >
+                            Exportar Visibles (Próximamente)
+                          </button>
+                          <button class="btn btn-sm btn-outline-info" onclick="displayAllInvoicesMain()">
+                            Mostrar Todos
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    <div id="results-invoices"></div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-
-      <div class="mt-5">
-        <div id="global-actions" class="card mb-3">
-          <div class="card-body d-flex justify-content-end">
-            <button
-              class="btn btn-sm btn-outline-secondary me-2"
-              onclick="printResults()"
-            >
-              Imprimir Visibles
-            </button>
-            <button
-              class="btn btn-sm btn-outline-success me-2"
-              onclick="exportResults()"
-            >
-              Exportar Visibles a XLSX
-            </button>
-            <button class="btn btn-sm btn-outline-info" onclick="displayAll()">
-              Mostrar Todos los Registros
-            </button>
-          </div>
-        </div>
-        <div id="results-container"></div>
       </div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
       const productSearchForm = document.getElementById("productSearchForm");
       const invoiceSearchForm = document.getElementById("invoiceSearchForm");
-      const resultsContainer = document.getElementById("results-container");
-      const globalActions = document.getElementById("global-actions");
-      let currentResultSets = [];
+      const resultsProducts = document.getElementById("results-products");
+      const resultsInvoices = document.getElementById("results-invoices");
+      const invoiceTabsNav = document.getElementById("invoiceTabsNav");
+      const invoiceTabsContent = document.getElementById("invoiceTabsContent");
+
+      let productResultSets = [];
+      let invoiceResultSets = [];
+      const invoiceProjectTabs = new Map(); // tabId -> { proyecto, slug, invoiceCardHtml, results: [] }
 
       function resetForm(formId) {
         const form = document.getElementById(formId);
@@ -428,9 +490,12 @@
 
         // For now, only a product form reset should clear the results.
         if (formId === "productSearchForm") {
-          currentResultSets = [];
-          resultsContainer.innerHTML = "";
-          globalActions.style.display = "none";
+          productResultSets = [];
+          resultsProducts.innerHTML = "";
+        }
+        if (formId === "invoiceSearchForm") {
+          invoiceResultSets = [];
+          resultsInvoices.innerHTML = "";
         }
       }
 
@@ -467,17 +532,17 @@
         const newResultSet = await response.json();
         newResultSet.type = newResultSet.type || "products";
         let addToExisting = false;
-        if (currentResultSets.length > 0) {
+        if (productResultSets.length > 0) {
           addToExisting = confirm(
             "¿Desea agregar estos resultados a la lista existente? (Cancelar para reemplazar)"
           );
         }
         if (addToExisting) {
-          currentResultSets.push(newResultSet);
+          productResultSets.push(newResultSet);
         } else {
-          currentResultSets = [newResultSet];
+          productResultSets = [newResultSet];
         }
-        renderResults();
+        renderProductResults();
       });
 
       invoiceSearchForm.addEventListener("submit", async (e) => {
@@ -492,48 +557,37 @@
         const newResultSet = await response.json();
         newResultSet.type = newResultSet.type || "invoices";
         let addToExisting = false;
-        if (currentResultSets.length > 0) {
+        if (invoiceResultSets.length > 0) {
           addToExisting = confirm(
             "¿Desea agregar estos resultados a la lista existente? (Cancelar para reemplazar)"
           );
         }
         if (addToExisting) {
-          currentResultSets.push(newResultSet);
+          invoiceResultSets.push(newResultSet);
         } else {
-          currentResultSets = [newResultSet];
+          invoiceResultSets = [newResultSet];
         }
-        renderResults();
+        renderInvoiceResults();
       });
 
-      function renderResults() {
-        resultsContainer.innerHTML = "";
+      function renderProductResults() {
+        resultsProducts.innerHTML = "";
+
         if (
-          currentResultSets.some((set) => set.results && set.results.length > 0)
+          productResultSets.length === 0 ||
+          productResultSets.every((set) => !set.results || set.results.length === 0)
         ) {
-          globalActions.style.display = "block";
-        } else {
-          globalActions.style.display = "none";
-        }
-
-        if (currentResultSets.length === 0) return;
-
-        // Check if all result sets are empty
-        const allEmpty = currentResultSets.every(
-          (set) => !set.results || set.results.length === 0
-        );
-
-        if (allEmpty) {
           const noResultsDiv = document.createElement("div");
           noResultsDiv.className = "alert alert-info text-center";
           noResultsDiv.innerHTML = `
       <h4 class="alert-heading">No se encontraron resultados</h4>
       <p class="mb-0">Intente con diferentes criterios de búsqueda.</p>
     `;
-          resultsContainer.appendChild(noResultsDiv);
+          resultsProducts.appendChild(noResultsDiv);
           return;
         }
 
-        currentResultSets.forEach((set) => {
+        productResultSets.forEach((set) => {
           if (!set.results || set.results.length === 0) return;
           const resultSetDiv = document.createElement("div");
           resultSetDiv.className = "result-set";
@@ -546,15 +600,51 @@
           const list = document.createElement("ul");
           list.className = "result-list";
           set.results.forEach((record) => {
-            const li =
-              set.type === "invoices"
-                ? renderInvoiceCard(record)
-                : renderProductCard(record);
+            const li = renderProductCard(record);
             if (li) list.appendChild(li);
           });
           resultSetDiv.innerHTML = header;
           resultSetDiv.appendChild(list);
-          resultsContainer.appendChild(resultSetDiv);
+          resultsProducts.appendChild(resultSetDiv);
+        });
+      }
+
+      function renderInvoiceResults() {
+        resultsInvoices.innerHTML = "";
+
+        if (
+          invoiceResultSets.length === 0 ||
+          invoiceResultSets.every((set) => !set.results || set.results.length === 0)
+        ) {
+          const noResultsDiv = document.createElement("div");
+          noResultsDiv.className = "alert alert-info text-center";
+          noResultsDiv.innerHTML = `
+      <h4 class="alert-heading">No se encontraron resultados</h4>
+      <p class="mb-0">Intente con diferentes criterios de búsqueda.</p>
+    `;
+          resultsInvoices.appendChild(noResultsDiv);
+          return;
+        }
+
+        invoiceResultSets.forEach((set) => {
+          if (!set.results || set.results.length === 0) return;
+          const resultSetDiv = document.createElement("div");
+          resultSetDiv.className = "result-set";
+          const header = `
+      <div class="result-header">
+        <h5 class="mb-0">Resultados de la Búsqueda</h5>
+        <small class="text-muted">${set.title}</small>
+      </div>
+    `;
+          const list = document.createElement("ul");
+          list.className = "result-list";
+          set.results.forEach((record) => {
+            const li = renderInvoiceCard(record);
+            if (li) list.appendChild(li);
+          });
+          resultSetDiv.innerHTML = header;
+          resultSetDiv.appendChild(list);
+          resultsInvoices.appendChild(resultSetDiv);
         });
       }
 
@@ -600,7 +690,7 @@
         li.style.alignItems = "start";
         li.style.gap = "15px";
 
-        const imageUrl =
+      const imageUrl =
           record.imagen ||
           record.img2 ||
           record.img3 ||
@@ -613,6 +703,15 @@
           record.img10 ||
           record.img11 ||
           "#";
+
+        const hasProyecto =
+          record.proyecto &&
+          typeof record.proyecto === "string" &&
+          record.proyecto.trim() !== "" &&
+          record.proyecto.toLowerCase().trim() !== "not found" &&
+          record.proyecto.toLowerCase().trim() !== "n/a" &&
+          record.proyecto.toLowerCase().trim() !== "null" &&
+          record.proyecto.toLowerCase().trim() !== "undefined";
 
         li.innerHTML = `
         <div style="flex: 60%">
@@ -638,8 +737,8 @@
         <div style="flex: 15%" class="d-flex flex-column align-items-end gap-2">
           <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
           ${
-            record.proyecto
-              ? `<button class="btn btn-sm btn-outline-primary" onclick="searchInquiryByProject('${(record.proyecto || "").replace(/'/g, "\\'")}')">Buscar Inquiry para ${record.proyecto}</button>`
+            hasProyecto
+              ? `<button class="btn btn-sm btn-outline-primary" onclick="searchInquiryByProject(this, '${(record.proyecto ).replace(/'/g, "\\'")}')">Buscar Inquiry para ${record.proyecto}</button>`
               : ""
           }
         </div>
@@ -654,15 +753,21 @@
         }
       }
 
-      function displayAll() {
-        resultsContainer.querySelectorAll(".disabled-record").forEach((el) => {
+      function displayAllProducts() {
+        resultsProducts.querySelectorAll(".disabled-record").forEach((el) => {
           el.classList.remove("disabled-record");
         });
       }
 
-      function printResults() {
+      function displayAllInvoices() {
+        resultsInvoices.querySelectorAll(".disabled-record").forEach((el) => {
+          el.classList.remove("disabled-record");
+        });
+      }
+
+      function printSection(container) {
         const printableContent = document.createElement("div");
-        resultsContainer.querySelectorAll(".result-set").forEach((set) => {
+        container.querySelectorAll(".result-set").forEach((set) => {
           const clone = set.cloneNode(true);
           clone
             .querySelectorAll("li:not(.disabled-record) button")
@@ -689,9 +794,17 @@
         printWindow.print();
       }
 
-      async function exportResults() {
+      function printProductResults() {
+        printSection(resultsProducts);
+      }
+
+      function printInvoiceResultsMain() {
+        printSection(document.getElementById("invoice-main-pane"));
+      }
+
+      async function exportProductResults() {
         const idsToExport = Array.from(
-          resultsContainer.querySelectorAll("li")
+          resultsProducts.querySelectorAll("li")
         )
           .filter((li) => !li.classList.contains("disabled-record"))
           .map((li) => li.dataset.id);
@@ -719,8 +832,193 @@
         }
       }
 
-      function searchInquiryByProject(proyecto) {
-        alert(`Búsqueda por proyecto pendiente de implementar (${proyecto})`);
+      function exportInvoiceResultsMain() {
+        alert("Exportar invoices aún no está implementado.");
+      }
+
+      function slugify(text) {
+        return text
+          .toString()
+          .toLowerCase()
+          .trim()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "");
+      }
+
+      function ensureInvoiceTab(tabId, title, invoiceCardHtml) {
+        if (!document.getElementById(`${tabId}-tab`)) {
+          const li = document.createElement("li");
+          li.className = "nav-item";
+          li.role = "presentation";
+          li.innerHTML = `
+            <button
+              class="nav-link"
+              id="${tabId}-tab"
+              data-bs-toggle="tab"
+              data-bs-target="#${tabId}-pane"
+              type="button"
+              role="tab"
+              aria-controls="${tabId}-pane"
+              aria-selected="false"
+            >
+              ${title}
+            </button>
+          `;
+          invoiceTabsNav.appendChild(li);
+
+          const pane = document.createElement("div");
+          pane.className = "tab-pane fade";
+          pane.id = `${tabId}-pane`;
+          pane.role = "tabpanel";
+          pane.tabIndex = 0;
+          pane.setAttribute("aria-labelledby", `${tabId}-tab`);
+          pane.innerHTML = `
+            <div class="card mb-3 mt-3">
+              <div class="card-body d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Invoice & Inquiries: ${title}</h5>
+                <div class="d-flex gap-2">
+                  <button
+                    class="btn btn-sm btn-outline-secondary"
+                    onclick="printInvoiceTab('${tabId}')"
+                  >
+                    Imprimir Visibles
+                  </button>
+                  <button
+                    class="btn btn-sm btn-outline-success"
+                    onclick="exportInvoiceTab('${tabId}')"
+                  >
+                    Exportar (Próximamente)
+                  </button>
+                  <button class="btn btn-sm btn-outline-info" onclick="displayAllInvoiceTab('${tabId}')">
+                    Mostrar Todos
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div class="result-set mb-3">
+              <ul class="result-list" id="${tabId}-invoice-card"></ul>
+            </div>
+            <div id="${tabId}-inquiries"></div>
+          `;
+          invoiceTabsContent.appendChild(pane);
+
+          if (invoiceCardHtml) {
+            const ul = pane.querySelector(`#${tabId}-invoice-card`);
+            ul.innerHTML = invoiceCardHtml;
+          }
+        }
+      }
+
+      function activateInvoiceTab(tabId) {
+        const tabButton = document.getElementById(`${tabId}-tab`);
+        if (tabButton) {
+          const tab = new bootstrap.Tab(tabButton);
+          tab.show();
+        }
+      }
+
+      async function searchInquiryByProject(button, proyectoRaw) {
+        const proyecto = (proyectoRaw || "").trim();
+        if (!proyecto) return;
+        const slug = slugify(proyecto) || `inv-tab-${Date.now()}`;
+        const tabId = `invoice-${slug}`;
+
+        const invoiceCard = button.closest("li");
+        const invoiceCardHtml = invoiceCard ? invoiceCard.outerHTML : "";
+
+        ensureInvoiceTab(tabId, proyecto, invoiceCardHtml);
+
+        // fetch inquiries (products) for this proyecto
+        try {
+          const response = await fetch("/search-inquiries-by-project", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ proyecto }),
+          });
+          const data = await response.json();
+          const inquiries = data.results || [];
+
+          const pane = document.getElementById(`${tabId}-pane`);
+          const inquiriesContainer = pane.querySelector(`#${tabId}-inquiries`);
+
+          inquiriesContainer.innerHTML = "";
+
+          if (inquiries.length === 0) {
+            const noResultsDiv = document.createElement("div");
+            noResultsDiv.className = "alert alert-info text-center";
+            noResultsDiv.innerHTML = `
+              <h4 class="alert-heading">No se encontraron inquiries</h4>
+              <p class="mb-0">No hay inquiries para este proyecto.</p>
+            `;
+            inquiriesContainer.appendChild(noResultsDiv);
+          } else {
+            const resultSetDiv = document.createElement("div");
+            resultSetDiv.className = "result-set";
+            const header = `
+              <div class="result-header">
+                <h5 class="mb-0">Inquiries vinculadas al proyecto: ${proyecto}</h5>
+                <small class="text-muted">Coincidencia por PROYECTO</small>
+              </div>
+            `;
+            const list = document.createElement("ul");
+            list.className = "result-list";
+            inquiries.forEach((rec) => {
+              const li = renderProductCard(rec);
+              if (li) list.appendChild(li);
+            });
+            resultSetDiv.innerHTML = header;
+            resultSetDiv.appendChild(list);
+            inquiriesContainer.appendChild(resultSetDiv);
+          }
+
+          activateInvoiceTab(tabId);
+        } catch (err) {
+          console.error("Error fetching inquiries by project", err);
+          alert("Error al buscar inquiries para este proyecto.");
+        }
+      }
+
+      function displayAllInvoiceTab(tabId) {
+        const pane = document.getElementById(`${tabId}-pane`);
+        if (!pane) return;
+        pane.querySelectorAll(".disabled-record").forEach((el) => {
+          el.classList.remove("disabled-record");
+        });
+      }
+
+      function printInvoiceTab(tabId) {
+        const pane = document.getElementById(`${tabId}-pane`);
+        if (!pane) return;
+        const printableContent = document.createElement("div");
+        pane.querySelectorAll(".result-set").forEach((set) => {
+          const clone = set.cloneNode(true);
+          clone
+            .querySelectorAll("li:not(.disabled-record) button")
+            .forEach((btn) => btn.remove());
+          clone
+            .querySelectorAll(".disabled-record")
+            .forEach((el) => el.remove());
+          printableContent.appendChild(clone);
+        });
+        const printWindow = window.open("", "_blank");
+        printWindow.document.write(
+          "<html><head><title>Resultados para Imprimir</title>"
+        );
+        printWindow.document.write(
+          '<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">'
+        );
+        printWindow.document.write(
+          "<style>.result-list li { display: block; }</style>"
+        );
+        printWindow.document.write("</head><body>");
+        printWindow.document.write(printableContent.innerHTML);
+        printWindow.document.write("</body></html>");
+        printWindow.document.close();
+        printWindow.print();
+      }
+
+      function exportInvoiceTab() {
+        alert("Exportar desde pestañas de invoices aún no está implementado.");
       }
 
     </script>

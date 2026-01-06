@@ -705,6 +705,46 @@ app.post("/search-invoices", async (req, res) => {
       .json({ error: "An error occurred while searching invoices." });
   }
 });
+
+// Search inquiries (products) by proyecto - used for linked invoice tabs
+app.post("/search-inquiries-by-project", async (req, res) => {
+  const proyecto = (req.body && req.body.proyecto) || "";
+  console.log("Searching inquiry by project:", proyecto);
+
+  if (!proyecto || proyecto.trim() === "") {
+    return res.json({
+      results: [],
+      title: "No project provided.",
+      type: "products",
+    });
+  }
+
+  // Note: invoices.proyecto corresponds to products.project
+  const query = `
+    SELECT * FROM products
+    WHERE
+      project ILIKE $1 OR
+      SIMILARITY(LOWER(unaccent(project)), LOWER(unaccent($1))) > 0.3 OR
+      LOWER(unaccent(project)) % LOWER(unaccent($1))
+    ORDER BY id;
+  `;
+
+  try {
+    const { rows } = await pool.query(query, [`%${proyecto}%`]);
+    const title = `PROYECTO: ${proyecto}`;
+    res.json({
+      results: rows,
+      title,
+      noResults: rows.length === 0,
+      type: "products",
+    });
+  } catch (err) {
+    console.error("Invoice linked inquiry search error", err.stack);
+    res
+      .status(500)
+      .json({ error: "An error occurred while searching linked inquiries." });
+  }
+});
 app.get("/test-query", async (req, res) => {
   try {
     // Simple query that should always work
