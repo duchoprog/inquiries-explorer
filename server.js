@@ -534,7 +534,9 @@ app.post("/search-invoices", async (req, res) => {
     proyecto_inv_3,
     proyecto_inv_4,
     proyecto_inv_5,
-  ].filter((p) => p && p !== "");
+  ]
+    .map((p) => sanitizeProyectoId(p || ""))
+    .filter((p) => p && p !== "");
 
   const productosInv = [
     producto_inv_1,
@@ -562,66 +564,74 @@ app.post("/search-invoices", async (req, res) => {
   const paisExclude = origen_inv_5 && origen_inv_5 !== "" ? origen_inv_5 : null;
 
   let mainQuery = "SELECT * FROM invoices";
-  const mainQueryParams = [];
-  const mainConditions = [];
+  const proyectoConditions = [];
+  const proyectoParams = [];
+  const optionalConditions = [];
+  const optionalParams = [];
   let paramIndex = 1;
 
-  // PROYECTO
+  // PROYECTO (exact match on sanitized id; extract sanitized id from DB values)
   if (proyectos.length > 0) {
     const conditions = proyectos.map((_, idx) => {
-      return `(
-        proyecto ILIKE $${paramIndex + idx} OR
-        SIMILARITY(LOWER(unaccent(proyecto)), LOWER(unaccent($${
-          paramIndex + idx
-        }))) > 0.3 OR
-        LOWER(unaccent(proyecto)) % LOWER(unaccent($${paramIndex + idx}))
-      )`;
+      return `upper(COALESCE(substring(unaccent(proyecto) from '([A-Z&]{2,}[0-9]{3,})'), '')) = upper(unaccent($${paramIndex + idx}))`;
     });
-    mainConditions.push(`(${conditions.join(" OR ")})`);
-    proyectos.forEach((p) => mainQueryParams.push(`%${p}%`));
+    proyectoConditions.push(`(${conditions.join(" OR ")})`);
+    proyectos.forEach((p) => proyectoParams.push(p));
     paramIndex += proyectos.length;
   }
 
-  // PRODUCTO
+  // PRODUCTO (optional, fuzzy)
   if (productosInv.length > 0) {
     const conditions = productosInv.map((_, idx) => {
       return `(
         producto ILIKE $${paramIndex + idx} OR
-        SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${
-          paramIndex + idx
-        }))) > 0.3 OR
+        SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${paramIndex + idx}))) > 0.3 OR
         LOWER(unaccent(producto)) % LOWER(unaccent($${paramIndex + idx}))
       )`;
     });
-    mainConditions.push(`(${conditions.join(" OR ")})`);
-    productosInv.forEach((p) => mainQueryParams.push(`%${p}%`));
+    optionalConditions.push(`(${conditions.join(" OR ")})`);
+    productosInv.forEach((p) => optionalParams.push(`%${p}%`));
     paramIndex += productosInv.length;
   }
 
-  // DESCRIPCION
+  // DESCRIPCION (optional, fuzzy)
   if (descripcionesInv.length > 0) {
     const conditions = descripcionesInv.map((_, idx) => {
       return `(
         descripcion ILIKE $${paramIndex + idx} OR
-        SIMILARITY(LOWER(unaccent(descripcion)), LOWER(unaccent($${
-          paramIndex + idx
-        }))) > 0.3 OR
+        SIMILARITY(LOWER(unaccent(descripcion)), LOWER(unaccent($${paramIndex + idx}))) > 0.3 OR
         LOWER(unaccent(descripcion)) % LOWER(unaccent($${paramIndex + idx}))
       )`;
     });
-    mainConditions.push(`(${conditions.join(" OR ")})`);
-    descripcionesInv.forEach((d) => mainQueryParams.push(`%${d}%`));
+    optionalConditions.push(`(${conditions.join(" OR ")})`);
+    descripcionesInv.forEach((d) => optionalParams.push(`%${d}%`));
     paramIndex += descripcionesInv.length;
   }
 
   // Build final query and apply ORIGEN (pais) filters
   let finalQuery = mainQuery;
-  const finalQueryParams = [...mainQueryParams];
-  let finalParamIndex = mainQueryParams.length + 1;
+  const finalQueryParams = [];
+  if (proyectoConditions.length > 0) {
+    finalQueryParams.push(...proyectoParams);
+  }
+  if (optionalConditions.length > 0) {
+    finalQueryParams.push(...optionalParams);
+  }
+  let finalParamIndex = finalQueryParams.length + 1;
 
-  if (mainConditions.length > 0) {
-    const searchOperator = searchTypeInv === "AND" ? " AND " : " OR ";
-    finalQuery += " WHERE " + mainConditions.join(searchOperator);
+  const searchOperator = searchTypeInv === "AND" ? " AND " : " OR ";
+
+  if (proyectoConditions.length > 0 && optionalConditions.length > 0) {
+    finalQuery +=
+      " WHERE " +
+      proyectoConditions.join(" AND ") +
+      " AND (" +
+      optionalConditions.join(searchOperator) +
+      ")";
+  } else if (proyectoConditions.length > 0) {
+    finalQuery += " WHERE " + proyectoConditions.join(" AND ");
+  } else if (optionalConditions.length > 0) {
+    finalQuery += " WHERE " + optionalConditions.join(searchOperator);
   }
 
   if (paises.length > 0 || paisExclude) {
@@ -660,11 +670,13 @@ app.post("/search-invoices", async (req, res) => {
   }
 
   // If no filters provided at all
-  if (
-    mainConditions.length === 0 &&
-    paises.length === 0 &&
-    !paisExclude
-  ) {
+  const hasAnyFilter =
+    proyectoConditions.length > 0 ||
+    optionalConditions.length > 0 ||
+    paises.length > 0 ||
+    !!paisExclude;
+
+  if (!hasAnyFilter) {
     return res.json({
       results: [],
       title: "No search criteria provided.",

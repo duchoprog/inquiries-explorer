@@ -51,6 +51,52 @@
       .form-label {
         font-size: 0.8rem;
       }
+      /* Visual differentiation for Products vs Invoices sections */
+      /* Products section - blue (cool) */
+      #products-tab-pane {
+        background: #e3ecff;
+        padding: 16px;
+        border-radius: 8px;
+      }
+      #products-tab-pane .card,
+      #products-tab-pane .result-set {
+        border: 2px solid #0a58ff !important;
+        box-shadow: 0 0 0 2px rgba(10, 88, 255, 0.12);
+        background: #f3f6ff;
+      }
+      /* Invoices section - green (warmer, more contrast) */
+      #invoices-tab-pane {
+        background: #e9f7e5;
+        padding: 16px;
+        border-radius: 8px;
+      }
+      #invoices-tab-pane .card,
+      #invoices-tab-pane .result-set {
+        border: 2px solid #2f9e44 !important;
+        box-shadow: 0 0 0 2px rgba(47, 158, 68, 0.12);
+        background: #f3fbf0;
+      }
+      /* Tab accents */
+      #products-tab.nav-link {
+        background: #e3ecff;
+        color: #000;
+      }
+      #products-tab.nav-link.active {
+        border-bottom: 3px solid #0a58ff;
+        color: #0a58ff !important;
+        font-weight: 600;
+        background: #d7e3ff;
+      }
+      #invoices-tab.nav-link {
+        background: #e9f7e5;
+        color: #000;
+      }
+      #invoices-tab.nav-link.active {
+        border-bottom: 3px solid #2f9e44;
+        color: #2f9e44 !important;
+        font-weight: 600;
+        background: #dcf2d6;
+      }
     </style>
   </head>
   <body class="bg-light">
