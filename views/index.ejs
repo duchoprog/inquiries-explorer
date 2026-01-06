@@ -704,14 +704,8 @@
           record.img11 ||
           "#";
 
-        const hasProyecto =
-          record.proyecto &&
-          typeof record.proyecto === "string" &&
-          record.proyecto.trim() !== "" &&
-          record.proyecto.toLowerCase().trim() !== "not found" &&
-          record.proyecto.toLowerCase().trim() !== "n/a" &&
-          record.proyecto.toLowerCase().trim() !== "null" &&
-          record.proyecto.toLowerCase().trim() !== "undefined";
+        const sanitizedProyecto = sanitizeProyectoId(record.proyecto || "");
+        const hasProyecto = sanitizedProyecto !== "";
 
         li.innerHTML = `
         <div style="flex: 60%">
@@ -738,7 +732,7 @@
           <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
           ${
             hasProyecto
-              ? `<button class="btn btn-sm btn-outline-primary" onclick="searchInquiryByProject(this, '${(record.proyecto ).replace(/'/g, "\\'")}')">Buscar Inquiry para ${record.proyecto}</button>`
+              ? `<button class="btn btn-sm btn-outline-primary" onclick="searchInquiryByProject(this, '${sanitizedProyecto.replace(/'/g, "\\'")}')">Buscar Inquiry para ${sanitizedProyecto}</button>`
               : ""
           }
         </div>
@@ -845,6 +839,11 @@
           .replace(/^-+|-+$/g, "");
       }
 
+      function sanitizeProyectoId(value) {
+        const match = (value || "").toUpperCase().match(/[A-Z&]{2,}[0-9]{3,}/);
+        return match ? match[0] : "";
+      }
+
       function ensureInvoiceTab(tabId, title, invoiceCardHtml) {
         if (!document.getElementById(`${tabId}-tab`)) {
           const li = document.createElement("li");
@@ -918,22 +917,22 @@
       }
 
       async function searchInquiryByProject(button, proyectoRaw) {
-        const proyecto = (proyectoRaw || "").trim();
-        if (!proyecto) return;
-        const slug = slugify(proyecto) || `inv-tab-${Date.now()}`;
+        const proyectoSanitized = sanitizeProyectoId(proyectoRaw || "");
+        if (!proyectoSanitized) return;
+        const slug = slugify(proyectoSanitized) || `inv-tab-${Date.now()}`;
         const tabId = `invoice-${slug}`;
 
         const invoiceCard = button.closest("li");
         const invoiceCardHtml = invoiceCard ? invoiceCard.outerHTML : "";
 
-        ensureInvoiceTab(tabId, proyecto, invoiceCardHtml);
+        ensureInvoiceTab(tabId, proyectoSanitized, invoiceCardHtml);
 
         // fetch inquiries (products) for this proyecto
         try {
           const response = await fetch("/search-inquiries-by-project", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ proyecto }),
+            body: JSON.stringify({ proyecto: proyectoSanitized }),
           });
           const data = await response.json();
           const inquiries = data.results || [];
@@ -956,7 +955,7 @@
             resultSetDiv.className = "result-set";
             const header = `
               <div class="result-header">
-                <h5 class="mb-0">Inquiries vinculadas al proyecto: ${proyecto}</h5>
+                <h5 class="mb-0">Inquiries vinculadas al proyecto: ${proyectoSanitized}</h5>
                 <small class="text-muted">Coincidencia por PROYECTO</small>
               </div>
             `;

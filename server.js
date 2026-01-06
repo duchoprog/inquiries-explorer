@@ -8,6 +8,14 @@ const ExcelJS = require("exceljs");
 const axios = require("axios");
 const sharp = require("sharp");
 
+// Helpers
+const sanitizeProyectoId = (value) => {
+  const match = (value || "")
+    .toUpperCase()
+    .match(/[A-Z&]{2,}[0-9]{3,}/);
+  return match ? match[0] : "";
+};
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -708,8 +716,9 @@ app.post("/search-invoices", async (req, res) => {
 
 // Search inquiries (products) by proyecto - used for linked invoice tabs
 app.post("/search-inquiries-by-project", async (req, res) => {
-  const proyecto = (req.body && req.body.proyecto) || "";
-  console.log("Searching inquiry by project:", proyecto);
+  const proyectoRaw = (req.body && req.body.proyecto) || "";
+  const proyecto = sanitizeProyectoId(proyectoRaw);
+  console.log("Searching inquiry by project sanitized:", proyecto);
 
   if (!proyecto || proyecto.trim() === "") {
     return res.json({
@@ -720,17 +729,15 @@ app.post("/search-inquiries-by-project", async (req, res) => {
   }
 
   // Note: invoices.proyecto corresponds to products.project
+  // Use exact match (case-insensitive) on the sanitized proyecto ID to avoid fuzzy hits.
   const query = `
     SELECT * FROM products
-    WHERE
-      project ILIKE $1 OR
-      SIMILARITY(LOWER(unaccent(project)), LOWER(unaccent($1))) > 0.3 OR
-      LOWER(unaccent(project)) % LOWER(unaccent($1))
+    WHERE upper(unaccent(project)) = upper(unaccent($1))
     ORDER BY id;
   `;
 
   try {
-    const { rows } = await pool.query(query, [`%${proyecto}%`]);
+    const { rows } = await pool.query(query, [proyecto]);
     const title = `PROYECTO: ${proyecto}`;
     res.json({
       results: rows,
