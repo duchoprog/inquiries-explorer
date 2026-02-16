@@ -337,7 +337,7 @@ app.post("/search", async (req, res) => {
   const origenExclude = origen5 && origen5 !== "" ? origen5 : null;
 
   // Step 1: Build main search query (PRODUCTO, DESCRIPCION, MATERIAL)
-  let mainQuery = "SELECT * FROM products";
+  let mainQuery = "SELECT * FROM products2";
   const mainQueryParams = [];
   const mainConditions = [];
   let paramIndex = 1;
@@ -743,7 +743,7 @@ app.post("/search-inquiries-by-project", async (req, res) => {
   // Note: invoices.proyecto corresponds to products.project
   // Use exact match (case-insensitive) on the sanitized proyecto ID to avoid fuzzy hits.
   const query = `
-    SELECT * FROM products
+    SELECT * FROM products2
     WHERE upper(unaccent(project)) = upper(unaccent($1))
     ORDER BY id;
   `;
@@ -767,7 +767,7 @@ app.post("/search-inquiries-by-project", async (req, res) => {
 app.get("/test-query", async (req, res) => {
   try {
     // Simple query that should always work
-    const result = await pool.query("SELECT COUNT(*) as count FROM products");
+    const result = await pool.query("SELECT COUNT(*) as count FROM products2");
     console.log("Test query result:", result.rows[0]);
     res.json({ success: true, count: result.rows[0].count });
   } catch (err) {
@@ -784,7 +784,7 @@ app.post("/export", async (req, res) => {
   }
 
   try {
-    const query = "SELECT * FROM products WHERE id = ANY($1) ORDER BY id;";
+    const query = "SELECT * FROM products2 WHERE id = ANY($1) ORDER BY id;";
     const { rows } = await pool.query(query, [ids]);
 
     // Create workbook and worksheet using ExcelJS
