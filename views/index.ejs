@@ -285,7 +285,11 @@
                     >
                       Limpiar
                     </button>
-                    <button type="submit" class="btn btn-primary btn-lg">
+                    <button
+                      type="submit"
+                      class="btn btn-primary btn-lg"
+                      id="productSearchBtn"
+                    >
                       Buscar
                     </button>
                   </div>
@@ -459,7 +463,11 @@
                     >
                       Limpiar
                     </button>
-                    <button type="submit" class="btn btn-primary btn-lg">
+                    <button
+                      type="submit"
+                      class="btn btn-primary btn-lg"
+                      id="invoiceSearchBtn"
+                    >
                       Buscar
                     </button>
                   </div>
@@ -527,6 +535,8 @@
     <script>
       const productSearchForm = document.getElementById("productSearchForm");
       const invoiceSearchForm = document.getElementById("invoiceSearchForm");
+      const productSearchBtn = document.getElementById("productSearchBtn");
+      const invoiceSearchBtn = document.getElementById("invoiceSearchBtn");
       const resultsProducts = document.getElementById("results-products");
       const resultsInvoices = document.getElementById("results-invoices");
       const invoiceTabsNav = document.getElementById("invoiceTabsNav");
@@ -534,6 +544,8 @@
 
       let productResultSets = [];
       let invoiceResultSets = [];
+      let productSearchController = null;
+      let invoiceSearchController = null;
       const invoiceProjectTabs = new Map(); // tabId -> { proyecto, slug, invoiceCardHtml, results: [] }
 
       function resetForm(formId) {
@@ -573,55 +585,116 @@
         return value;
       }
 
+      function setSearchButtonLoading(button, isLoading) {
+        if (!button) return;
+        if (isLoading) {
+          if (button.dataset.originalHtml === undefined) {
+            button.dataset.originalHtml = button.innerHTML;
+          }
+          button.disabled = true;
+          button.innerHTML =
+            '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Buscando...';
+        } else {
+          button.disabled = false;
+          if (button.dataset.originalHtml !== undefined) {
+            button.innerHTML = button.dataset.originalHtml;
+            delete button.dataset.originalHtml;
+          }
+        }
+      }
+
       productSearchForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         console.log("Submitting product search form...");
+
+        if (productSearchController) {
+          productSearchController.abort();
+        }
+        const controller = new AbortController();
+        productSearchController = controller;
+
         const formData = new FormData(productSearchForm);
         const data = Object.fromEntries(formData.entries());
-        const response = await fetch("/search", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams(data),
-        });
-        const newResultSet = await response.json();
-        newResultSet.type = newResultSet.type || "products";
-        let addToExisting = false;
-        if (productResultSets.length > 0) {
-          addToExisting = confirm(
-            "¿Desea agregar estos resultados a la lista existente? (Cancelar para reemplazar)"
-          );
+        setSearchButtonLoading(productSearchBtn, true);
+        try {
+          const response = await fetch("/search", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams(data),
+            signal: controller.signal,
+          });
+          const newResultSet = await response.json();
+          newResultSet.type = newResultSet.type || "products";
+          let addToExisting = false;
+          if (productResultSets.length > 0) {
+            addToExisting = confirm(
+              "¿Desea agregar estos resultados a la lista existente? (Cancelar para reemplazar)"
+            );
+          }
+          if (addToExisting) {
+            productResultSets.push(newResultSet);
+          } else {
+            productResultSets = [newResultSet];
+          }
+          renderProductResults();
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            console.error("Product search error", err);
+            alert("Error al buscar productos.");
+          }
+        } finally {
+          // A newer submit already took over the button; leave it in its state.
+          if (productSearchController === controller) {
+            productSearchController = null;
+            setSearchButtonLoading(productSearchBtn, false);
+          }
         }
-        if (addToExisting) {
-          productResultSets.push(newResultSet);
-        } else {
-          productResultSets = [newResultSet];
-        }
-        renderProductResults();
       });
 
       invoiceSearchForm.addEventListener("submit", async (e) => {
         e.preventDefault();
+
+        if (invoiceSearchController) {
+          invoiceSearchController.abort();
+        }
+        const controller = new AbortController();
+        invoiceSearchController = controller;
+
         const formData = new FormData(invoiceSearchForm);
         const data = Object.fromEntries(formData.entries());
-        const response = await fetch("/search-invoices", {
-          method: "POST",
-          headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          body: new URLSearchParams(data),
-        });
-        const newResultSet = await response.json();
-        newResultSet.type = newResultSet.type || "invoices";
-        let addToExisting = false;
-        if (invoiceResultSets.length > 0) {
-          addToExisting = confirm(
-            "¿Desea agregar estos resultados a la lista existente? (Cancelar para reemplazar)"
-          );
+        setSearchButtonLoading(invoiceSearchBtn, true);
+        try {
+          const response = await fetch("/search-invoices", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams(data),
+            signal: controller.signal,
+          });
+          const newResultSet = await response.json();
+          newResultSet.type = newResultSet.type || "invoices";
+          let addToExisting = false;
+          if (invoiceResultSets.length > 0) {
+            addToExisting = confirm(
+              "¿Desea agregar estos resultados a la lista existente? (Cancelar para reemplazar)"
+            );
+          }
+          if (addToExisting) {
+            invoiceResultSets.push(newResultSet);
+          } else {
+            invoiceResultSets = [newResultSet];
+          }
+          renderInvoiceResults();
+        } catch (err) {
+          if (err.name !== "AbortError") {
+            console.error("Invoice search error", err);
+            alert("Error al buscar invoices.");
+          }
+        } finally {
+          if (invoiceSearchController === controller) {
+            invoiceSearchController = null;
+            setSearchButtonLoading(invoiceSearchBtn, false);
+          }
         }
-        if (addToExisting) {
-          invoiceResultSets.push(newResultSet);
-        } else {
-          invoiceResultSets = [newResultSet];
-        }
-        renderInvoiceResults();
       });
 
       function renderProductResults() {
