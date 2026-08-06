@@ -457,17 +457,17 @@ app.post("/search", async (req, res) => {
   finalQuery += " ORDER BY id;";
 
   try {
-    console.log("\n=== Query Details ===");
-    console.log("Parameters received:", {
-      productos,
-      descripciones,
-      materiales,
-      origenes,
-      origenExclude,
-      searchType,
-    });
-    console.log("Executing query:", finalQuery);
-    console.log("Query parameters:", finalQueryParams);
+    //console.log("\n=== Query Details ===");
+    //console.log("Parameters received:", {
+    //  productos,
+    //  descripciones,
+    //  materiales,
+    //  origenes,
+    //  origenExclude,
+    //  searchType,
+    //});
+    //console.log("Executing query:", finalQuery);
+    //console.log("Query parameters:", finalQueryParams);
 
     const { rows } = await pool.query(finalQuery, finalQueryParams);
 
@@ -664,7 +664,9 @@ app.post("/search-invoices", async (req, res) => {
     }
 
     if (origenConditions.length > 0) {
-      const whereClause = mainConditions.length > 0 ? " AND " : " WHERE ";
+      const hasWhereClause =
+        proyectoConditions.length > 0 || optionalConditions.length > 0;
+      const whereClause = hasWhereClause ? " AND " : " WHERE ";
       finalQuery += whereClause + `(${origenConditions.join(" AND ")})`;
     }
   }
@@ -687,7 +689,7 @@ app.post("/search-invoices", async (req, res) => {
   finalQuery += " ORDER BY id;";
 
   try {
-    console.log("\n=== Invoice Query Details ===");
+    /* console.log("\n=== Invoice Query Details ===");
     console.log("Parameters received:", {
       proyectos,
       productosInv,
@@ -697,7 +699,7 @@ app.post("/search-invoices", async (req, res) => {
       searchTypeInv,
     });
     console.log("Executing query:", finalQuery);
-    console.log("Query parameters:", finalQueryParams);
+    console.log("Query parameters:", finalQueryParams); */
 
     const { rows } = await pool.query(finalQuery, finalQueryParams);
 
