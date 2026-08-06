@@ -30,9 +30,9 @@ const pool = new Pool({
     rejectUnauthorized: false,
   },
   // Add these connection pool settings
-  max: 20, // Maximum number of clients in the pool
+  max: 10, // Maximum number of clients in the pool
   idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 2000, // Return an error after 2 seconds if connection could not be established
+  connectionTimeoutMillis: 5000, // Return an error after 2 seconds if connection could not be established
   maxUses: 7500, // Close a connection after it has been used 7500 times
   keepAlive: true, // Keep connections alive
   keepAliveInitialDelayMillis: 10000, // Start keep-alive probes after 10 seconds
