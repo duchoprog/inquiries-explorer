@@ -905,6 +905,32 @@ app.post("/export", async (req, res) => {
   }
 });
 
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+const shutdown = async (signal) => {
+  console.log(`${signal} received, shutting down...`);
+
+  // Render kills the process after a grace period; don't hang past it.
+  const forceExit = setTimeout(() => {
+    console.error("Shutdown timed out, forcing exit.");
+    process.exit(1);
+  }, 10000);
+  forceExit.unref();
+
+  try {
+    await new Promise((resolve, reject) => {
+      server.close((err) => (err ? reject(err) : resolve()));
+    });
+    await pool.end();
+    console.log("Shutdown complete.");
+    process.exit(0);
+  } catch (err) {
+    console.error("Error during shutdown", err);
+    process.exit(1);
+  }
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
