@@ -64,6 +64,9 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.use(express.urlencoded({ extended: true })); // To parse form data
 app.use(express.json()); // To parse JSON for export endpoint
+// Serve static files from the 'public' directory
+app.use(express.static('public'));
+
 
 const SQL_TO_HEADER_MAP = {
   item: "# ITEM",
