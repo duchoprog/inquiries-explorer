@@ -309,6 +309,8 @@
                         Imprimir Visibles
                       </button>
                       <button
+                        type="button"
+                        id="exportProductBtn"
                         class="btn btn-sm btn-outline-success"
                         onclick="exportProductResults()"
                       >
@@ -585,7 +587,7 @@
         return value;
       }
 
-      function setSearchButtonLoading(button, isLoading) {
+      function setSearchButtonLoading(button, isLoading, loadingText = "Buscando...") {
         if (!button) return;
         if (isLoading) {
           if (button.dataset.originalHtml === undefined) {
@@ -593,7 +595,7 @@
           }
           button.disabled = true;
           button.innerHTML =
-            '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Buscando...';
+            `<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>${loadingText}`;
         } else {
           button.disabled = false;
           if (button.dataset.originalHtml !== undefined) {
@@ -926,6 +928,7 @@
       }
 
       async function exportProductResults() {
+        const exportBtn = document.getElementById("exportProductBtn");
         const idsToExport = Array.from(
           resultsProducts.querySelectorAll("li")
         )
@@ -935,23 +938,31 @@
           alert("No hay registros visibles para exportar.");
           return;
         }
-        const response = await fetch("/export", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ids: idsToExport }),
-        });
-        if (response.ok) {
-          const blob = await response.blob();
-          const url = window.URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.style.display = "none";
-          a.href = url;
-          a.download = "productos.xlsx";
-          document.body.appendChild(a);
-          a.click();
-          window.URL.revokeObjectURL(url);
-        } else {
+        setSearchButtonLoading(exportBtn, true, "Exportando...");
+        try {
+          const response = await fetch("/export", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ ids: idsToExport }),
+          });
+          if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.style.display = "none";
+            a.href = url;
+            a.download = "productos.xlsx";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+          } else {
+            alert("Error al exportar los datos.");
+          }
+        } catch (err) {
+          console.error("Export error", err);
           alert("Error al exportar los datos.");
+        } finally {
+          setSearchButtonLoading(exportBtn, false);
         }
       }
 
