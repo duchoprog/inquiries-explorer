@@ -605,6 +605,7 @@
 
       productSearchForm.addEventListener("submit", async (e) => {
         e.preventDefault();
+        markKeepaliveActivity();
         console.log("Submitting product search form...");
 
         if (productSearchController) {
@@ -653,6 +654,7 @@
 
       invoiceSearchForm.addEventListener("submit", async (e) => {
         e.preventDefault();
+        markKeepaliveActivity();
 
         if (invoiceSearchController) {
           invoiceSearchController.abort();
@@ -1147,6 +1149,29 @@
         alert("Exportar desde pestañas de invoices aún no está implementado.");
       }
 
+      // Render's free tier sleeps after 15 min without an inbound request.
+      // Keep pinging while the user has been active in the last 60 minutes,
+      // including when the tab is backgrounded (e.g. they stepped into a meeting).
+      const KEEPALIVE_INTERVAL_MS = 10 * 60 * 1000;
+      const KEEPALIVE_IDLE_LIMIT_MS = 60 * 60 * 1000;
+      let lastKeepaliveActivityAt = Date.now();
+
+      function markKeepaliveActivity() {
+        lastKeepaliveActivityAt = Date.now();
+      }
+
+      ["mousemove", "keydown", "click"].forEach((eventName) => {
+        document.addEventListener(eventName, markKeepaliveActivity, {
+          passive: true,
+        });
+      });
+
+      setInterval(() => {
+        if (Date.now() - lastKeepaliveActivityAt > KEEPALIVE_IDLE_LIMIT_MS) {
+          return;
+        }
+        fetch("/healthz", { cache: "no-store" }).catch(() => {});
+      }, KEEPALIVE_INTERVAL_MS);
     </script>
   </body>
 </html>

@@ -277,6 +277,11 @@ const productoOptions = [
   "RISTRAS",
 ];
 
+// Keepalive target for the browser: must stay cheap, so no DB and no template.
+app.get("/healthz", (req, res) => {
+  res.type("text/plain").send("ok");
+});
+
 // Main route to render the search page
 app.get("/", (req, res) => {
   res.render("index", { productoOptions });
