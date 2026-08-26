@@ -16,6 +16,10 @@ const sanitizeProyectoId = (value) => {
   return match ? match[0] : "";
 };
 
+// pg_trgm: prefer strict word similarity over loose string similarity / `%` (default 0.3).
+// 0.5 keeps typo tolerance (sombero≈sombrero) while rejecting near-misses (sombrero≠sombrilla).
+const FUZZY_SIMILARITY_THRESHOLD = 0.5;
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -355,10 +359,9 @@ app.post("/search", async (req, res) => {
     const productConditions = productos.map((_, index) => {
       return `(
         producto ILIKE $${paramIndex + index} OR 
-        SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${
+        STRICT_WORD_SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${
           paramIndex + index
-        }))) > 0.3 OR
-        LOWER(unaccent(producto)) % LOWER(unaccent($${paramIndex + index}))
+        }))) >= ${FUZZY_SIMILARITY_THRESHOLD}
       )`;
     });
 
@@ -373,18 +376,12 @@ app.post("/search", async (req, res) => {
       return `(
       product_description ILIKE $${paramIndex + index} OR 
       product_real_description ILIKE $${paramIndex + index} OR
-      SIMILARITY(LOWER(unaccent(product_description)), LOWER(unaccent($${
+      STRICT_WORD_SIMILARITY(LOWER(unaccent(product_description)), LOWER(unaccent($${
         paramIndex + index
-      }))) > 0.3 OR
-      SIMILARITY(LOWER(unaccent(product_real_description)), LOWER(unaccent($${
+      }))) >= ${FUZZY_SIMILARITY_THRESHOLD} OR
+      STRICT_WORD_SIMILARITY(LOWER(unaccent(product_real_description)), LOWER(unaccent($${
         paramIndex + index
-      }))) > 0.3 OR
-      LOWER(unaccent(product_description)) % LOWER(unaccent($${
-        paramIndex + index
-      })) OR
-      LOWER(unaccent(product_real_description)) % LOWER(unaccent($${
-        paramIndex + index
-      }))
+      }))) >= ${FUZZY_SIMILARITY_THRESHOLD}
     )`;
     });
     mainConditions.push(`(${descripcionConditions.join(" OR ")})`);
@@ -397,10 +394,9 @@ app.post("/search", async (req, res) => {
     const materialConditions = materiales.map((_, index) => {
       return `(
       material ILIKE $${paramIndex + index} OR
-      SIMILARITY(LOWER(unaccent(material)), LOWER(unaccent($${
+      STRICT_WORD_SIMILARITY(LOWER(unaccent(material)), LOWER(unaccent($${
         paramIndex + index
-      }))) > 0.3 OR
-      LOWER(unaccent(material)) % LOWER(unaccent($${paramIndex + index}))
+      }))) >= ${FUZZY_SIMILARITY_THRESHOLD}
     )`;
     });
     mainConditions.push(`(${materialConditions.join(" OR ")})`);
@@ -425,10 +421,10 @@ app.post("/search", async (req, res) => {
     // Step 1: Exclude records where origen matches the 5th field (ORIGEN NO ES)
     if (origenExclude) {
       origenConditions.push(`(
-        origen IS NULL OR 
-        origen NOT ILIKE $${finalParamIndex} AND
-        SIMILARITY(LOWER(unaccent(origen)), LOWER(unaccent($${finalParamIndex}))) <= 0.3 AND
-        NOT (LOWER(unaccent(origen)) % LOWER(unaccent($${finalParamIndex})))
+        origen IS NULL OR (
+          origen NOT ILIKE $${finalParamIndex} AND
+          STRICT_WORD_SIMILARITY(LOWER(unaccent(origen)), LOWER(unaccent($${finalParamIndex}))) < ${FUZZY_SIMILARITY_THRESHOLD}
+        )
       )`);
       finalQueryParams.push(`%${origenExclude}%`);
       finalParamIndex++;
@@ -439,10 +435,9 @@ app.post("/search", async (req, res) => {
       const origenIncludeConditions = origenes.map((_, index) => {
         return `(
           origen ILIKE $${finalParamIndex + index} OR
-          SIMILARITY(LOWER(unaccent(origen)), LOWER(unaccent($${
+          STRICT_WORD_SIMILARITY(LOWER(unaccent(origen)), LOWER(unaccent($${
             finalParamIndex + index
-          }))) > 0.3 OR
-          LOWER(unaccent(origen)) % LOWER(unaccent($${finalParamIndex + index}))
+          }))) >= ${FUZZY_SIMILARITY_THRESHOLD}
         )`;
       });
       origenConditions.push(`(${origenIncludeConditions.join(" OR ")})`);
@@ -593,8 +588,7 @@ app.post("/search-invoices", async (req, res) => {
     const conditions = productosInv.map((_, idx) => {
       return `(
         producto ILIKE $${paramIndex + idx} OR
-        SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${paramIndex + idx}))) > 0.3 OR
-        LOWER(unaccent(producto)) % LOWER(unaccent($${paramIndex + idx}))
+        STRICT_WORD_SIMILARITY(LOWER(unaccent(producto)), LOWER(unaccent($${paramIndex + idx}))) >= ${FUZZY_SIMILARITY_THRESHOLD}
       )`;
     });
     optionalConditions.push(`(${conditions.join(" OR ")})`);
@@ -607,8 +601,7 @@ app.post("/search-invoices", async (req, res) => {
     const conditions = descripcionesInv.map((_, idx) => {
       return `(
         descripcion ILIKE $${paramIndex + idx} OR
-        SIMILARITY(LOWER(unaccent(descripcion)), LOWER(unaccent($${paramIndex + idx}))) > 0.3 OR
-        LOWER(unaccent(descripcion)) % LOWER(unaccent($${paramIndex + idx}))
+        STRICT_WORD_SIMILARITY(LOWER(unaccent(descripcion)), LOWER(unaccent($${paramIndex + idx}))) >= ${FUZZY_SIMILARITY_THRESHOLD}
       )`;
     });
     optionalConditions.push(`(${conditions.join(" OR ")})`);
@@ -647,10 +640,10 @@ app.post("/search-invoices", async (req, res) => {
 
     if (paisExclude) {
       origenConditions.push(`(
-        pais IS NULL OR
-        pais NOT ILIKE $${finalParamIndex} AND
-        SIMILARITY(LOWER(unaccent(pais)), LOWER(unaccent($${finalParamIndex}))) <= 0.3 AND
-        NOT (LOWER(unaccent(pais)) % LOWER(unaccent($${finalParamIndex})))
+        pais IS NULL OR (
+          pais NOT ILIKE $${finalParamIndex} AND
+          STRICT_WORD_SIMILARITY(LOWER(unaccent(pais)), LOWER(unaccent($${finalParamIndex}))) < ${FUZZY_SIMILARITY_THRESHOLD}
+        )
       )`);
       finalQueryParams.push(`%${paisExclude}%`);
       finalParamIndex++;
@@ -660,10 +653,9 @@ app.post("/search-invoices", async (req, res) => {
       const includeConds = paises.map((_, idx) => {
         return `(
           pais ILIKE $${finalParamIndex + idx} OR
-          SIMILARITY(LOWER(unaccent(pais)), LOWER(unaccent($${
+          STRICT_WORD_SIMILARITY(LOWER(unaccent(pais)), LOWER(unaccent($${
             finalParamIndex + idx
-          }))) > 0.3 OR
-          LOWER(unaccent(pais)) % LOWER(unaccent($${finalParamIndex + idx}))
+          }))) >= ${FUZZY_SIMILARITY_THRESHOLD}
         )`;
       });
       origenConditions.push(`(${includeConds.join(" OR ")})`);
