@@ -854,6 +854,107 @@ app.get("/test-query", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+// Export images: the picture columns sometimes hold free text around the URL,
+// so pull the first http(s) URL out instead of trusting the whole cell.
+const EXPORT_IMAGE_HEIGHT = 100;
+const EXPORT_IMAGE_CONCURRENCY = 16;
+const EXPORT_IMAGE_TIMEOUT_MS = 10000;
+const EXPORT_IMAGE_MAX_BYTES = 15 * 1024 * 1024;
+const EXPORT_IMAGE_MAX_ATTEMPTS = 3;
+// Resized thumbnails are ~3KB each; a few thousand is ~10MB and makes
+// repeat exports of the same products (very common) nearly free.
+const EXPORT_THUMB_CACHE_MAX = 4000;
+const exportThumbCache = new Map(); // url -> { buffer, width, height }
+
+function firstHttpUrl(value) {
+  if (!value) return "";
+  const match = String(value).match(/https?:\/\/[^\s"'<>]+/i);
+  return match ? match[0] : "";
+}
+
+function cacheThumb(url, thumb) {
+  if (exportThumbCache.size >= EXPORT_THUMB_CACHE_MAX) {
+    exportThumbCache.delete(exportThumbCache.keys().next().value); // oldest
+  }
+  exportThumbCache.set(url, thumb);
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableImageError(err) {
+  const status = err.response && err.response.status;
+  if (status === 429 || (status >= 500 && status < 600)) return true;
+  return !status && (err.code === "ECONNABORTED" || err.code === "ECONNRESET" || err.code === "ETIMEDOUT");
+}
+
+async function fetchAndResizeImage(url) {
+  let attempt = 0;
+  for (;;) {
+    attempt++;
+    try {
+      const response = await axios.get(url, {
+        responseType: "arraybuffer",
+        timeout: EXPORT_IMAGE_TIMEOUT_MS,
+        maxContentLength: EXPORT_IMAGE_MAX_BYTES,
+        maxRedirects: 3,
+      });
+      // One sharp pass: resize by height keeps the aspect ratio and reports
+      // the resulting dimensions, so no separate metadata() round-trip.
+      const { data, info } = await sharp(response.data)
+        .resize({ height: EXPORT_IMAGE_HEIGHT, fit: "inside" })
+        .jpeg({ quality: 80 })
+        .toBuffer({ resolveWithObject: true });
+      return { buffer: data, width: info.width, height: info.height };
+    } catch (err) {
+      if (attempt >= EXPORT_IMAGE_MAX_ATTEMPTS || !isRetryableImageError(err)) {
+        throw err;
+      }
+      // Supabase Storage answers 429 on cold bursts; honour Retry-After if given.
+      const retryAfterSec = Number(err.response && err.response.headers["retry-after"]);
+      const backoffMs = retryAfterSec > 0 ? retryAfterSec * 1000 : 500 * 2 ** (attempt - 1);
+      await sleep(Math.min(backoffMs, 5000));
+    }
+  }
+}
+
+// Resolves to Map<url, {buffer,width,height} | null>. Never rejects.
+async function fetchAndResizeImages(urls) {
+  const results = new Map();
+  const pending = [];
+  for (const url of urls) {
+    const cached = exportThumbCache.get(url);
+    if (cached) {
+      results.set(url, cached);
+    } else {
+      pending.push(url);
+    }
+  }
+
+  let cursor = 0;
+  const worker = async () => {
+    while (cursor < pending.length) {
+      const url = pending[cursor++];
+      try {
+        const thumb = await fetchAndResizeImage(url);
+        cacheThumb(url, thumb);
+        results.set(url, thumb);
+      } catch (err) {
+        console.error(`Export: image failed ${url}:`, err.message);
+        results.set(url, null);
+      }
+    }
+  };
+  await Promise.all(
+    Array.from({ length: Math.min(EXPORT_IMAGE_CONCURRENCY, pending.length) }, worker)
+  );
+  console.log(
+    `Export: ${urls.length - pending.length} thumbnails from cache, ${pending.length} fetched`
+  );
+  return results;
+}
+
 // Export route to generate an XLSX file
 app.post("/export", async (req, res) => {
   const { ids } = req.body;
@@ -862,7 +963,9 @@ app.post("/export", async (req, res) => {
     return res.status(400).send("No records to export.");
   }
 
+  const exportStartedAt = Date.now();
   try {
+    console.log(`Export started for ${ids.length} ids`);
     const query = "SELECT * FROM products2 WHERE id = ANY($1) ORDER BY id;";
     const { rows } = await pool.query(query, [ids]);
 
@@ -904,63 +1007,55 @@ app.post("/export", async (req, res) => {
       sqlColumnIndexMap[sqlCol] = index + 1;
     });
 
-    // Process each data row
+    // Add all data rows first, collecting image placements to resolve later.
+    const imageColumns = ["reference_picture", "product_real_pictures"];
+    const imageJobs = []; // { rowIndex, columnIndex, url, recordId }
+    const addedRows = [];
+
     for (let i = 0; i < rows.length; i++) {
       const dbRow = rows[i];
-      const excelRowData = sqlColumns.map((col) => dbRow[col]);
+      const addedRow = worksheet.addRow(sqlColumns.map((col) => dbRow[col]));
+      addedRow.height = 20;
+      addedRows.push(addedRow);
 
-      const addedRow = worksheet.addRow(excelRowData);
-      let rowHasImage = false;
-
-      const imageColumns = ["reference_picture", "product_real_pictures"];
       for (const sqlColumn of imageColumns) {
-        const imageUrl = dbRow[sqlColumn];
+        const url = firstHttpUrl(dbRow[sqlColumn]);
         const columnIndex = sqlColumnIndexMap[sqlColumn];
-
-        if (imageUrl && columnIndex) {
-          try {
-            const response = await axios.get(imageUrl, {
-              responseType: "arraybuffer",
-            });
-
-            const metadata = await sharp(response.data).metadata();
-            const targetHeight = 100;
-            const proportionalWidth = Math.round(
-              (metadata.width * targetHeight) / metadata.height
-            );
-
-            const resizedImage = await sharp(response.data)
-              .resize(proportionalWidth, targetHeight, { fit: "inside" })
-              .jpeg({ quality: 80 })
-              .toBuffer();
-
-            const imageId = workbook.addImage({
-              buffer: resizedImage,
-              extension: "jpeg",
-            });
-
-            worksheet.addImage(imageId, {
-              tl: { col: columnIndex - 1, row: i + 1 },
-              ext: { width: proportionalWidth, height: targetHeight },
-            });
-
-            const imageCell = addedRow.getCell(columnIndex);
-            imageCell.value = ""; // Clear the URL
-            rowHasImage = true;
-          } catch (imageError) {
-            console.error(
-              `Error processing image for record ${dbRow.id} (${sqlColumn}):`,
-              imageError.message
-            );
-          }
+        if (url && columnIndex) {
+          imageJobs.push({ rowIndex: i, columnIndex, url, recordId: dbRow.id });
         }
       }
+    }
 
-      if (rowHasImage) {
-        addedRow.height = 110; // Height for rows with images
-      } else {
-        addedRow.height = 20; // Default height
+    // Download + resize concurrently, once per distinct URL.
+    const imagesStartedAt = Date.now();
+    const resizedByUrl = await fetchAndResizeImages(
+      [...new Set(imageJobs.map((job) => job.url))]
+    );
+    console.log(
+      `Export: ${imageJobs.length} image placements, ${resizedByUrl.size} distinct URLs, ` +
+        `${[...resizedByUrl.values()].filter(Boolean).length} resized in ${Date.now() - imagesStartedAt}ms`
+    );
+
+    const excelImageIdByUrl = new Map();
+    for (const job of imageJobs) {
+      const resized = resizedByUrl.get(job.url);
+      if (!resized) continue;
+
+      let imageId = excelImageIdByUrl.get(job.url);
+      if (imageId === undefined) {
+        imageId = workbook.addImage({ buffer: resized.buffer, extension: "jpeg" });
+        excelImageIdByUrl.set(job.url, imageId);
       }
+
+      worksheet.addImage(imageId, {
+        tl: { col: job.columnIndex - 1, row: job.rowIndex + 1 },
+        ext: { width: resized.width, height: resized.height },
+      });
+
+      const addedRow = addedRows[job.rowIndex];
+      addedRow.getCell(job.columnIndex).value = ""; // Clear the URL
+      addedRow.height = 110; // Height for rows with images
     }
 
     // Set up response headers
@@ -973,6 +1068,9 @@ app.post("/export", async (req, res) => {
     // Write workbook to buffer and send
     const buffer = await workbook.xlsx.writeBuffer();
     res.send(buffer);
+    console.log(
+      `Export finished: ${rows.length} rows, ${buffer.length} bytes in ${Date.now() - exportStartedAt}ms`
+    );
   } catch (err) {
     console.error("Export error", err.stack);
     res.status(500).send("Error generating export file.");
