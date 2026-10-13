@@ -19,6 +19,23 @@ const sanitizeProyectoId = (value) => {
 // pg_trgm: prefer strict word similarity over loose string similarity / `%` (default 0.3).
 // 0.5 keeps typo tolerance (sombero≈sombrero) while rejecting near-misses (sombrero≠sombrilla).
 const FUZZY_SIMILARITY_THRESHOLD = 0.5;
+const PRODUCT_SEARCH_COLUMNS = [
+  "id",
+  "url",
+  "project",
+  "company_name",
+  "sales_contact",
+  "wechat",
+  "email",
+  "product_description",
+  "product_real_description",
+  "quantity",
+  "price_usd",
+  "origen",
+  "producto",
+  "product_real_pictures",
+  "reference_picture",
+].join(", ");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -69,12 +86,10 @@ async function terminateIdleAppSessions(client) {
           'pg_cron scheduler',
           'Supavisor (auth_query)'
         )
+        AND now() - state_change > interval '10 minutes'
         AND (
           application_name = $1
-          OR (
-            COALESCE(application_name, '') IN ('', 'Supavisor')
-            AND now() - state_change > interval '2 minutes'
-          )
+          OR COALESCE(application_name, '') IN ('', 'Supavisor')
         )
     )
     SELECT pid, application_name, idle_for, pg_terminate_backend(pid) AS killed
@@ -399,7 +414,7 @@ app.post("/search", async (req, res) => {
   const origenExclude = origen5 && origen5 !== "" ? origen5 : null;
 
   // Step 1: Build main search query (PRODUCTO, DESCRIPCION, MATERIAL)
-  let mainQuery = "SELECT * FROM products2";
+  let mainQuery = `SELECT ${PRODUCT_SEARCH_COLUMNS} FROM products2`;
   const mainQueryParams = [];
   const mainConditions = [];
   let paramIndex = 1;
@@ -522,7 +537,7 @@ app.post("/search", async (req, res) => {
 
     const { rows } = await pool.query(finalQuery, finalQueryParams);
     console.log(
-      `Product search finished in ${Date.now() - startedAt}ms, rows=${rows.length}`
+      `Product search DB rows received in ${Date.now() - startedAt}ms, rows=${rows.length}`
     );
 
     // Create a summary title for the results
@@ -539,12 +554,22 @@ app.post("/search", async (req, res) => {
       titleParts.push(`ORIGEN NO ES: ${origenExclude}`);
     const title = titleParts.join(` ${searchType} `);
 
-    res.json({
+    const stringifyStartedAt = Date.now();
+    const payload = JSON.stringify({
       results: rows,
       title: title,
       noResults: rows.length === 0,
       type: "products",
     });
+    console.log(
+      `Product search JSON built in ${Date.now() - stringifyStartedAt}ms, bytes=${payload.length}`
+    );
+
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
+    res.send(payload);
+    console.log(
+      `Product search HTTP response sent in ${Date.now() - startedAt}ms total`
+    );
   } catch (err) {
     console.error("Database query error", err.stack);
     res

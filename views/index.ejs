@@ -59,6 +59,13 @@
       .form-label {
         font-size: 0.8rem;
       }
+      .result-thumb {
+        max-height: 150px;
+        height: 150px;
+        width: 150px;
+        object-fit: contain;
+        background: #f0f0f0;
+      }
       /* Visual differentiation for Products vs Invoices sections */
       /* Products section - blue (cool) */
       #products-tab-pane {
@@ -548,6 +555,7 @@
       let invoiceResultSets = [];
       let productSearchController = null;
       let invoiceSearchController = null;
+      let lazyImageObserver = null;
       const invoiceProjectTabs = new Map(); // tabId -> { proyecto, slug, invoiceCardHtml, results: [] }
 
       function resetForm(formId) {
@@ -559,32 +567,144 @@
         // For now, only a product form reset should clear the results.
         if (formId === "productSearchForm") {
           productResultSets = [];
+          disconnectLazyImages();
           resultsProducts.innerHTML = "";
         }
         if (formId === "invoiceSearchForm") {
           invoiceResultSets = [];
+          disconnectLazyImages();
           resultsInvoices.innerHTML = "";
+        }
+      }
+
+      // Linear-time URL check. The previous regex had nested quantifiers
+      // (`([\/\w \.-]*)*`) and backtracked exponentially on long URLs with
+      // query strings, freezing the tab on a single card.
+      function looksLikeUrl(text) {
+        if (!text || /\s/.test(text)) return false;
+        try {
+          const url = new URL(/^https?:\/\//i.test(text) ? text : `http://${text}`);
+          return /^([\da-z-]+\.)+[a-z]{2,}$/i.test(url.hostname);
+        } catch (err) {
+          return false;
         }
       }
 
       function makeClickableIfValid(value) {
         if (!value || value === "N/A") return value;
+        const text = String(value).trim();
 
         // Check if it's an email address
-        if (value.includes("@")) {
-          return `<a href="mailto:${value}" class="text-decoration-none">${value}</a>`;
+        if (text.includes("@")) {
+          return `<a href="mailto:${escapeAttr(text)}" class="text-decoration-none">${value}</a>`;
         }
 
         // Check if it's a website URL (has a top-level domain)
-        const urlPattern =
-          /^(https?:\/\/)?([\da-z\.-]+\.)+([a-z\.]{2,6})([\/\w \.-]*)*\/?$/i;
-        if (urlPattern.test(value)) {
+        if (looksLikeUrl(text)) {
           // Add http:// if no protocol is specified
-          const href = value.startsWith("http") ? value : `http://${value}`;
-          return `<a href="${href}" target="_blank" class="text-decoration-none">${value}</a>`;
+          const href = /^https?:\/\//i.test(text) ? text : `http://${text}`;
+          return `<a href="${escapeAttr(href)}" target="_blank" class="text-decoration-none">${value}</a>`;
         }
 
         return value;
+      }
+
+      function escapeAttr(value) {
+        return String(value == null ? "" : value)
+          .replace(/&/g, "&amp;")
+          .replace(/"/g, "&quot;")
+          .replace(/</g, "&lt;");
+      }
+
+      function firstImageUrl(value) {
+        if (!value || value === "#" || value === "N/A") return "";
+        const text = String(value).trim();
+        const match = text.match(/https?:\/\/[^\s"'<>]+/i);
+        return match ? match[0] : "";
+      }
+
+      function imageTag(url) {
+        const src = firstImageUrl(url);
+        if (!src) return "";
+        return `<img data-src="${escapeAttr(src)}"
+               alt=""
+               class="img-fluid result-thumb"
+               width="150"
+               height="150"
+               onerror="this.style.display='none'">`;
+      }
+
+      function disconnectLazyImages() {
+        if (lazyImageObserver) {
+          lazyImageObserver.disconnect();
+          lazyImageObserver = null;
+        }
+      }
+
+      function observeLazyImages(root) {
+        if (!("IntersectionObserver" in window) || !root) {
+          root.querySelectorAll("img[data-src]").forEach((img) => {
+            img.src = img.getAttribute("data-src");
+            img.removeAttribute("data-src");
+          });
+          return;
+        }
+        if (!lazyImageObserver) {
+          lazyImageObserver = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                const img = entry.target;
+                const src = img.getAttribute("data-src");
+                if (src) {
+                  img.src = src;
+                  img.removeAttribute("data-src");
+                }
+                lazyImageObserver.unobserve(img);
+              }
+            },
+            { rootMargin: "150px 0px" }
+          );
+        }
+        root.querySelectorAll("img[data-src]").forEach((img) => {
+          lazyImageObserver.observe(img);
+        });
+      }
+
+      function yieldToPaint() {
+        return new Promise((resolve) => {
+          requestAnimationFrame(() => setTimeout(resolve, 0));
+        });
+      }
+
+      function appendRecordsInChunks(list, records, renderCard, chunkSize = 25) {
+        return new Promise((resolve) => {
+          let index = 0;
+          const next = () => {
+            const startedAt = Date.now();
+            const fragment = document.createDocumentFragment();
+            const end = Math.min(index + chunkSize, records.length);
+            for (; index < end; index++) {
+              try {
+                const li = renderCard(records[index]);
+                if (li) fragment.appendChild(li);
+              } catch (err) {
+                console.error("Browser: card render failed", records[index] && records[index].id, err);
+              }
+            }
+            list.appendChild(fragment);
+            const hasMore = index < records.length;
+            if (hasMore) {
+              setTimeout(next, 0);
+            }
+            observeLazyImages(list);
+            console.log(
+              `Browser: appended ${end}/${records.length} cards in ${Date.now() - startedAt}ms`
+            );
+            if (!hasMore) resolve();
+          };
+          next();
+        });
       }
 
       function setSearchButtonLoading(button, isLoading, loadingText = "Buscando...") {
@@ -619,19 +739,34 @@
         const formData = new FormData(productSearchForm);
         const data = Object.fromEntries(formData.entries());
         setSearchButtonLoading(productSearchBtn, true);
-        const timeoutId = setTimeout(() => controller.abort("timeout"), 25000);
+        const timeoutId = setTimeout(() => controller.abort("timeout"), 60000);
         try {
+          console.log("Browser: sending /search");
+          const fetchStartedAt = Date.now();
           const response = await fetch("/search", {
             method: "POST",
             headers: { "Content-Type": "application/x-www-form-urlencoded" },
             body: new URLSearchParams(data),
             signal: controller.signal,
           });
+          console.log(
+            `Browser: /search headers in ${Date.now() - fetchStartedAt}ms, status=${response.status}, content-length=${response.headers.get("content-length")}`
+          );
           if (!response.ok) {
             throw new Error("Product search failed");
           }
+          const parseStartedAt = Date.now();
           const newResultSet = await response.json();
+          console.log(
+            `Browser: /search JSON parsed in ${Date.now() - parseStartedAt}ms, results=${(newResultSet.results || []).length}`
+          );
           newResultSet.type = newResultSet.type || "products";
+          if (productSearchController === controller) {
+            productSearchController = null;
+            setSearchButtonLoading(productSearchBtn, false);
+            console.log("Browser: spinner off");
+          }
+          await yieldToPaint();
           let addToExisting = false;
           if (productResultSets.length > 0) {
             addToExisting = confirm(
@@ -643,7 +778,11 @@
           } else {
             productResultSets = [newResultSet];
           }
-          renderProductResults();
+          const renderStartedAt = Date.now();
+          await renderProductResults();
+          console.log(
+            `Browser: renderProductResults finished in ${Date.now() - renderStartedAt}ms`
+          );
         } catch (err) {
           if (err.name === "AbortError") {
             if (controller.signal.reason === "timeout") {
@@ -676,7 +815,7 @@
         const formData = new FormData(invoiceSearchForm);
         const data = Object.fromEntries(formData.entries());
         setSearchButtonLoading(invoiceSearchBtn, true);
-        const timeoutId = setTimeout(() => controller.abort("timeout"), 25000);
+        const timeoutId = setTimeout(() => controller.abort("timeout"), 60000);
         try {
           const response = await fetch("/search-invoices", {
             method: "POST",
@@ -689,6 +828,11 @@
           }
           const newResultSet = await response.json();
           newResultSet.type = newResultSet.type || "invoices";
+          if (invoiceSearchController === controller) {
+            invoiceSearchController = null;
+            setSearchButtonLoading(invoiceSearchBtn, false);
+          }
+          await yieldToPaint();
           let addToExisting = false;
           if (invoiceResultSets.length > 0) {
             addToExisting = confirm(
@@ -700,7 +844,7 @@
           } else {
             invoiceResultSets = [newResultSet];
           }
-          renderInvoiceResults();
+          await renderInvoiceResults();
         } catch (err) {
           if (err.name === "AbortError") {
             if (controller.signal.reason === "timeout") {
@@ -719,7 +863,8 @@
         }
       });
 
-      function renderProductResults() {
+      async function renderProductResults() {
+        disconnectLazyImages();
         resultsProducts.innerHTML = "";
 
         if (
@@ -736,29 +881,26 @@
           return;
         }
 
-        productResultSets.forEach((set) => {
-          if (!set.results || set.results.length === 0) return;
+        for (const set of productResultSets) {
+          if (!set.results || set.results.length === 0) continue;
           const resultSetDiv = document.createElement("div");
           resultSetDiv.className = "result-set";
-          const header = `
+          resultSetDiv.innerHTML = `
       <div class="result-header">
-        <h5 class="mb-0">Resultados de la Búsqueda</h5>
+        <h5 class="mb-0">${set.results.length} resultado${set.results.length === 1 ? "" : "s"}</h5>
         <small class="text-muted">${set.title}</small>
       </div>
     `;
           const list = document.createElement("ul");
           list.className = "result-list";
-          set.results.forEach((record) => {
-            const li = renderProductCard(record);
-            if (li) list.appendChild(li);
-          });
-          resultSetDiv.innerHTML = header;
           resultSetDiv.appendChild(list);
           resultsProducts.appendChild(resultSetDiv);
-        });
+          await appendRecordsInChunks(list, set.results, renderProductCard);
+        }
       }
 
-      function renderInvoiceResults() {
+      async function renderInvoiceResults() {
+        disconnectLazyImages();
         resultsInvoices.innerHTML = "";
 
         if (
@@ -775,26 +917,22 @@
           return;
         }
 
-        invoiceResultSets.forEach((set) => {
-          if (!set.results || set.results.length === 0) return;
+        for (const set of invoiceResultSets) {
+          if (!set.results || set.results.length === 0) continue;
           const resultSetDiv = document.createElement("div");
           resultSetDiv.className = "result-set";
-          const header = `
+          resultSetDiv.innerHTML = `
       <div class="result-header">
-        <h5 class="mb-0">Resultados de la Búsqueda</h5>
+        <h5 class="mb-0">${set.results.length} resultado${set.results.length === 1 ? "" : "s"}</h5>
         <small class="text-muted">${set.title}</small>
       </div>
     `;
           const list = document.createElement("ul");
           list.className = "result-list";
-          set.results.forEach((record) => {
-            const li = renderInvoiceCard(record);
-            if (li) list.appendChild(li);
-          });
-          resultSetDiv.innerHTML = header;
           resultSetDiv.appendChild(list);
           resultsInvoices.appendChild(resultSetDiv);
-        });
+          await appendRecordsInChunks(list, set.results, renderInvoiceCard);
+        }
       }
 
       function renderProductCard(record) {
@@ -803,9 +941,11 @@
         li.style.display = "flex";
         li.style.alignItems = "start";
         li.style.gap = "15px";
+        const imageUrl =
+          record.product_real_pictures || record.reference_picture || "";
         li.innerHTML = `
         <div style="flex: 60%">
-          <a href="${record.url || "#"}" target="_blank" class="fw-bold">${record.project || "Sin Proyecto"}</a>
+          <a href="${escapeAttr(record.url || "#")}" target="_blank" class="fw-bold">${record.project || "Sin Proyecto"}</a>
           <div class="mt-2">
             <div><u>Company Name:</u> ${record.company_name || "N/A"} <span class="text-muted">|</span> <u>Contact:</u> ${makeClickableIfValid(record.sales_contact)}</div>
             <div><u>Wechat:</u> ${record.wechat || "N/A"} <span class="text-muted">|</span> <u>Email:</u> ${makeClickableIfValid(record.email)}</div>
@@ -819,11 +959,7 @@
           </div>
         </div>
         <div style="flex: 25%" class="text-center">
-          <img src="${record.product_real_pictures || record.reference_picture || "#"}" 
-               alt="Product Image" 
-               class="img-fluid"
-               style="max-height: 150px"
-               onerror="this.style.display='none'">
+          ${imageTag(imageUrl)}
         </div>
         <div style="flex: 15%" class="text-end d-flex flex-column gap-2">
           <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
@@ -871,11 +1007,7 @@
           </div>
         </div>
         <div style="flex: 25%" class="text-center">
-          <img src="${imageUrl}" 
-               alt="Invoice Image" 
-               class="img-fluid"
-               style="max-height: 150px"
-               onerror="this.style.display='none'">
+          ${imageTag(imageUrl)}
         </div>
         <div style="flex: 15%" class="d-flex flex-column align-items-end gap-2">
           <button class="btn btn-sm btn-outline-danger" onclick="disableRecord(this)">Ocultar</button>
