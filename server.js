@@ -24,6 +24,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const dummy=0
+const APP_NAME = "inquiries-explorer";
 
 // IMPORTANT: Use Environment Variables for your database connection string
 // In Render.com, you will set this in the "Environment" tab.
@@ -33,10 +34,12 @@ const pool = new Pool({
   ssl: {
     rejectUnauthorized: false,
   },
+  application_name: APP_NAME,
   // Add these connection pool settings
   max: 10, // Maximum number of clients in the pool
-  idleTimeoutMillis: 30000, // Close idle clients after 30 seconds
-  connectionTimeoutMillis: 5000, // Return an error after 2 seconds if connection could not be established
+  idleTimeoutMillis: 10000, // Recycle before the Supabase pooler drops idle sockets
+  connectionTimeoutMillis: 5000, // Return an error after 5 seconds if a connection could not be established
+  query_timeout: 20000, // Fail hung queries instead of spinning the UI forever
   maxUses: 7500, // Close a connection after it has been used 7500 times
   keepAlive: true, // Keep connections alive
   keepAliveInitialDelayMillis: 10000, // Start keep-alive probes after 10 seconds
@@ -47,21 +50,68 @@ pool.on("error", (err, client) => {
   console.error("Unexpected error on idle client", err);
 });
 
-// Modify the connection test to be more informative
-pool.connect((err, client, release) => {
-  if (err) {
-    console.error("Error connecting to the database:", err.stack);
+async function terminateIdleAppSessions(client) {
+  // Only our DB user, never PostgREST / Supabase internals, never this backend.
+  // Tagged leftovers are always eligible. Untagged/Supavisor leftovers must be
+  // idle > 2 minutes so a second live copy of the app is not killed mid-request.
+  const { rows } = await client.query(
+    `
+    WITH victims AS (
+      SELECT pid, application_name, now() - state_change AS idle_for
+      FROM pg_stat_activity
+      WHERE datname = current_database()
+        AND pid <> pg_backend_pid()
+        AND usename = current_user
+        AND state IN ('idle', 'idle in transaction')
+        AND COALESCE(application_name, '') NOT IN (
+          'postgrest',
+          'postgres_exporter',
+          'pg_cron scheduler',
+          'Supavisor (auth_query)'
+        )
+        AND (
+          application_name = $1
+          OR (
+            COALESCE(application_name, '') IN ('', 'Supavisor')
+            AND now() - state_change > interval '2 minutes'
+          )
+        )
+    )
+    SELECT pid, application_name, idle_for, pg_terminate_backend(pid) AS killed
+    FROM victims
+    `,
+    [APP_NAME]
+  );
+
+  if (rows.length === 0) {
+    console.log("No leftover idle app sessions to terminate.");
     return;
   }
-  client.query("SELECT NOW()", (err, result) => {
-    release();
-    if (err) {
-      console.error("Error executing test query:", err.stack);
-      return;
-    }
-    console.log("Successfully connected to database at:", result.rows[0].now);
-  });
-});
+
+  console.log(
+    `Terminated ${rows.length} idle session(s):`,
+    rows.map((row) => ({
+      pid: row.pid,
+      app: row.application_name || "(none)",
+      idle_for: row.idle_for,
+      killed: row.killed,
+    }))
+  );
+}
+
+(async () => {
+  let client;
+  try {
+    client = await pool.connect();
+    const { rows } = await client.query("SELECT NOW() AS now");
+    console.log("Successfully connected to database at:", rows[0].now);
+    await terminateIdleAppSessions(client);
+  } catch (err) {
+    console.error("Error during database startup:", err.stack || err);
+  } finally {
+    if (client) client.release();
+  }
+})();
 
 // Set up the view engine and middleware
 app.set("view engine", "ejs");
@@ -460,19 +510,20 @@ app.post("/search", async (req, res) => {
   finalQuery += " ORDER BY id;";
 
   try {
-    //console.log("\n=== Query Details ===");
-    //console.log("Parameters received:", {
-    //  productos,
-    //  descripciones,
-    //  materiales,
-    //  origenes,
-    //  origenExclude,
-    //  searchType,
-    //});
-    //console.log("Executing query:", finalQuery);
-    //console.log("Query parameters:", finalQueryParams);
+    const startedAt = Date.now();
+    console.log("Product search started", {
+      productos,
+      descripciones,
+      materiales,
+      origenes,
+      origenExclude,
+      searchType,
+    });
 
     const { rows } = await pool.query(finalQuery, finalQueryParams);
+    console.log(
+      `Product search finished in ${Date.now() - startedAt}ms, rows=${rows.length}`
+    );
 
     // Create a summary title for the results
     const titleParts = [];
@@ -689,8 +740,8 @@ app.post("/search-invoices", async (req, res) => {
   finalQuery += " ORDER BY id;";
 
   try {
-    /* console.log("\n=== Invoice Query Details ===");
-    console.log("Parameters received:", {
+    const startedAt = Date.now();
+    console.log("Invoice search started", {
       proyectos,
       productosInv,
       descripcionesInv,
@@ -698,10 +749,11 @@ app.post("/search-invoices", async (req, res) => {
       paisExclude,
       searchTypeInv,
     });
-    console.log("Executing query:", finalQuery);
-    console.log("Query parameters:", finalQueryParams); */
 
     const { rows } = await pool.query(finalQuery, finalQueryParams);
+    console.log(
+      `Invoice search finished in ${Date.now() - startedAt}ms, rows=${rows.length}`
+    );
 
     const titleParts = [];
     if (proyectos.length > 0)

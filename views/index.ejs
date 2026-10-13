@@ -619,6 +619,7 @@
         const formData = new FormData(productSearchForm);
         const data = Object.fromEntries(formData.entries());
         setSearchButtonLoading(productSearchBtn, true);
+        const timeoutId = setTimeout(() => controller.abort("timeout"), 25000);
         try {
           const response = await fetch("/search", {
             method: "POST",
@@ -626,6 +627,9 @@
             body: new URLSearchParams(data),
             signal: controller.signal,
           });
+          if (!response.ok) {
+            throw new Error("Product search failed");
+          }
           const newResultSet = await response.json();
           newResultSet.type = newResultSet.type || "products";
           let addToExisting = false;
@@ -641,11 +645,16 @@
           }
           renderProductResults();
         } catch (err) {
-          if (err.name !== "AbortError") {
+          if (err.name === "AbortError") {
+            if (controller.signal.reason === "timeout") {
+              alert("La búsqueda tardó demasiado. Intente de nuevo.");
+            }
+          } else {
             console.error("Product search error", err);
             alert("Error al buscar productos.");
           }
         } finally {
+          clearTimeout(timeoutId);
           // A newer submit already took over the button; leave it in its state.
           if (productSearchController === controller) {
             productSearchController = null;
@@ -667,6 +676,7 @@
         const formData = new FormData(invoiceSearchForm);
         const data = Object.fromEntries(formData.entries());
         setSearchButtonLoading(invoiceSearchBtn, true);
+        const timeoutId = setTimeout(() => controller.abort("timeout"), 25000);
         try {
           const response = await fetch("/search-invoices", {
             method: "POST",
@@ -674,6 +684,9 @@
             body: new URLSearchParams(data),
             signal: controller.signal,
           });
+          if (!response.ok) {
+            throw new Error("Invoice search failed");
+          }
           const newResultSet = await response.json();
           newResultSet.type = newResultSet.type || "invoices";
           let addToExisting = false;
@@ -689,11 +702,16 @@
           }
           renderInvoiceResults();
         } catch (err) {
-          if (err.name !== "AbortError") {
+          if (err.name === "AbortError") {
+            if (controller.signal.reason === "timeout") {
+              alert("La búsqueda tardó demasiado. Intente de nuevo.");
+            }
+          } else {
             console.error("Invoice search error", err);
             alert("Error al buscar invoices.");
           }
         } finally {
+          clearTimeout(timeoutId);
           if (invoiceSearchController === controller) {
             invoiceSearchController = null;
             setSearchButtonLoading(invoiceSearchBtn, false);
